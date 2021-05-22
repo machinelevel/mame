@@ -1021,12 +1021,422 @@ void renderer_ogl::loadGLExtensions()
 	_once = 0;
 }
 
+//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////
+// ej lightfield experiments
+
+bool do_lightfield = true;
+enum {
+    SHADOWBOX_MODE_OFF,
+    SHADOWBOX_MODE_BASIC_QUILT_MONO,
+    SHADOWBOX_MODE_BASIC_QUILT_FULL,
+    SHADOWBOX_MODE_BASIC_QUILT_STEREO,
+    SHADOWBOX_MODE_HOWMANY // just to count and terminate
+};
+
+class Quilt
+{
+public:
+    Quilt(int _tile_size_x, int _tile_size_y,
+          int _num_tiles_x, int _num_tiles_y)
+    : tile_size_x(_tile_size_x), tile_size_y(_tile_size_y),
+      num_tiles_x(_num_tiles_x), num_tiles_y(_num_tiles_y)
+    {
+        num_tiles = num_tiles_x * num_tiles_y;
+        full_size_x = tile_size_x * num_tiles_x;
+        full_size_y = tile_size_y * num_tiles_y;
+
+        tex16_row_bytes = full_size_x * sizeof(uint16_t);
+        tex16_row_64s = tex16_row_bytes / sizeof(uint64_t);
+        tex16_pixels.resize(tex16_row_64s * full_size_y);
+        tex16_tile_address.resize(num_tiles);
+
+        for (int ty = 0; ty < num_tiles_y; ++ty)
+        {
+            for (int tx = 0; tx < num_tiles_x; ++tx)
+            {
+                int ti = tx + ty * num_tiles_x;
+                tex16_tile_address[ti] = ((uint16_t*)&tex16_pixels[0]) +
+                                         tx * tile_size_x +
+                                         ty * tile_size_y * num_tiles_x * tile_size_x;
+            }
+        }
+
+        // tex16 = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_RGB565,
+        //                           SDL_TEXTUREACCESS_STREAMING, full_size_x, full_size_y);
+        printf(">> Quilt tile_size:%dx%d, num_tiles:%dx%d, total:%dx%d tex16:%p (%dMB)\n",
+               tile_size_x, tile_size_y, num_tiles_x, num_tiles_y,
+               full_size_x, full_size_y, (void*)&tex16_pixels[0], (int)((8 * tex16_row_64s * full_size_y) / 1048576));
+    }
+    ~Quilt()
+    {
+    }
+
+    void make_test_pattern()
+    {
+        const int num_colors = 8;
+        uint64_t color64s[num_colors] = {
+            0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
+            0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
+        };
+        // uint64_t num64s = row_64s * full_size_y;
+        // for (uint64_t i = 0; i < num64s; ++i)
+        //     ((uint64_t*)tex16_pixels)[i] = 0xf000f000f000f000LL;
+        for (uint32_t ti = 0; ti < num_tiles; ++ti)
+        {
+            uint32_t tx = ti % num_tiles_x;
+            uint32_t ty = ti / num_tiles_x;
+            uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
+            uint64_t color = color64s[(tx + 3*ty) % num_colors];
+            color = 0;
+            int tile_x_64s = tex16_row_64s / num_tiles_x;
+            for (int y = 0; y < tile_size_y; ++y)
+            {
+                for (int x = 0; x < tile_x_64s; ++x)
+                    dst_row[x] = color;
+                dst_row += tex16_row_64s;
+            }
+        }
+    }
+
+
+//protected:
+    int tile_size_x, tile_size_y;
+    int num_tiles_x, num_tiles_y;
+    int full_size_x, full_size_y;
+    uint32_t num_tiles;
+    std::vector<int16_t>   tile_parallax_table;
+
+    std::vector<uint64_t>  tex16_pixels;
+    std::vector<uint16_t*> tex16_tile_address;
+    int tex16_row_bytes;
+    int tex16_row_64s;
+
+    GLuint tex16_id;
+    GLuint quad_vbo;
+    GLuint plain_shader;
+};
+
+class Shadowbox
+{
+public:
+	Shadowbox()
+	{
+		mode = SHADOWBOX_MODE_BASIC_QUILT_FULL;
+		quilt = NULL;
+        glUseProgram = NULL;
+        view_angle_min = -5.0f;
+        view_angle_max = 5.0f;
+        view_angle = 0.0f;
+		setup_quilt();
+	}
+	~Shadowbox()
+	{
+		delete quilt;
+	}
+
+	void setup_quilt()
+	{
+        init_gl_extensions();
+		quilt = new Quilt(512, 680, 9, 5);
+        compile_quilt_shaders();
+		quilt->make_test_pattern();
+	}
+
+    void init_gl_extensions()
+    {
+        if (!glUseProgram)
+        {
+            glUseProgram        = (PFNGLUSEPROGRAMPROC)       SDL_GL_GetProcAddress("glUseProgram");
+            glCreateShader      = (PFNGLCREATESHADERPROC)     SDL_GL_GetProcAddress("glCreateShader");
+            glShaderSource      = (PFNGLSHADERSOURCEPROC)     SDL_GL_GetProcAddress("glShaderSource");
+            glCompileShader     = (PFNGLCOMPILESHADERPROC)    SDL_GL_GetProcAddress("glCompileShader");
+            glGetShaderiv       = (PFNGLGETSHADERIVPROC)      SDL_GL_GetProcAddress("glGetShaderiv");
+            glGetShaderInfoLog  = (PFNGLGETSHADERINFOLOGPROC) SDL_GL_GetProcAddress("glGetShaderInfoLog");
+            glAttachShader      = (PFNGLATTACHSHADERPROC)     SDL_GL_GetProcAddress("glAttachShader");
+            glCreateProgram     = (PFNGLCREATEPROGRAMPROC)    SDL_GL_GetProcAddress("glCreateProgram");
+            glLinkProgram       = (PFNGLLINKPROGRAMPROC)      SDL_GL_GetProcAddress("glLinkProgram");
+            glGetProgramiv      = (PFNGLGETPROGRAMIVPROC)     SDL_GL_GetProcAddress("glGetProgramiv");
+            glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)SDL_GL_GetProcAddress("glGetProgramInfoLog");
+            glValidateProgram   = (PFNGLVALIDATEPROGRAMPROC)  SDL_GL_GetProcAddress("glValidateProgram");
+            glBindBuffer        = (PFNGLBINDBUFFERPROC)       SDL_GL_GetProcAddress("glBindBuffer");
+            glGenBuffers        = (PFNGLGENBUFFERSPROC)       SDL_GL_GetProcAddress("glGenBuffers");
+            glBufferData        = (PFNGLBUFFERDATAPROC)       SDL_GL_GetProcAddress("glBufferData");
+            glUniform1i         = (PFNGLUNIFORM1IPROC)        SDL_GL_GetProcAddress("glUniform1i");
+            glGetUniformLocation      = (PFNGLGETUNIFORMLOCATIONPROC)      SDL_GL_GetProcAddress("glGetUniformLocation");
+            glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
+            glVertexAttribPointer     = (PFNGLVERTEXATTRIBPOINTERPROC)     SDL_GL_GetProcAddress("glVertexAttribPointer");
+            glTexStorage2D     = (PFNGLTEXSTORAGE2DPROC)     SDL_GL_GetProcAddress("glTexStorage2D");
+        }
+    }
+
+    void add_shader(GLuint program, const char* shader_src, GLenum shader_type)
+    {
+        GLuint shader_obj = glCreateShader(shader_type);
+        if (!shader_obj) {
+            printf("Error creating shader type %d\n", shader_type);
+            return ;
+        }
+
+        const GLchar* p[1];
+        p[0] = shader_src;
+        GLint lengths[1];
+        lengths[0]= strlen(shader_src);
+
+        glShaderSource(shader_obj, 1, p, lengths);
+        glCompileShader(shader_obj);
+
+        GLint success;
+        glGetShaderiv(shader_obj, GL_COMPILE_STATUS, &success);
+
+        if (!success) {
+            GLchar info_log[1024];
+            glGetShaderInfoLog(shader_obj, 1024, NULL, info_log);
+            printf("Error compiling shader type %d: '%s'\n", shader_type, info_log);
+            return;
+        }
+        glAttachShader(program, shader_obj);
+    }
+
+	void compile_quilt_shaders()
+	{
+	    GLuint shader_program = glCreateProgram();
+	    if (shader_program == 0)
+	    {
+	        printf("Error creating shader program\n");
+	        return;
+	    }
+	    const char* vshader = 
+	    "    attribute vec3 vertexIn;    "
+	    "    attribute vec4 uvIn;    "
+	    "    varying vec4 uv_fn;    "
+	    "    void main() {    "
+	    "       uv_fn = uvIn;    "
+	    "       gl_Position = vec4(vertexIn.xyz,1.0);    "
+	    "    }    ";
+	    const char* pshader = 
+	    "    uniform sampler2D tx_color;    "
+	    "    varying vec4 uv_fn;    "
+	    "    void main() {    "
+	    "       vec4 color1 = texture2D(tx_color,uv_fn.xy);    "
+	    "       vec4 color2 = vec4(uv_fn.x, uv_fn.y, 0, 1);    "
+	    "       gl_FragColor = vec4(color1.xyz, 1);    "
+	    "    }    ";
+	    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
+	    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
+	    GLint success = 0;
+	    GLchar error_log[1024] = { 0 };
+	    glLinkProgram(shader_program);
+	    glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
+
+	    if (!success) {
+	        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+	        printf("Error linking shader program: '%s'\n", error_log);
+	        return;
+	    }
+	    glValidateProgram(shader_program);
+	    glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &success);
+
+	    if (!success) {
+	        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+	        printf("Invalid shader program: '%s'\n", error_log);
+	        return;
+	    }
+	    quilt->plain_shader = shader_program;
+	    glGenTextures(1, &quilt->tex16_id);
+	    glGenBuffers(1, &quilt->quad_vbo);
+	    printf("Quilt shaders compiled ok.\n");
+	}
+
+    void draw_whole_quilt_to_screen()
+    {
+        GLint old_program;
+        glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(quilt->plain_shader);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+        glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
+        glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+        glPixelStorei(GL_UNPACK_SKIP_ROWS,    0);
+        glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
+        glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
+        glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
+                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
+        glUniform1i(glGetUniformLocation(quilt->plain_shader, "tx_color"), 0);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        const float vratio = 200.0 / 240.0;
+        const float mono_h = (1.0 * 512) / 640;
+        const float mono_v = (vratio * 680) / 400;
+
+        static float verts_full[] = {
+                              // pos
+                              -1.0f, -1.0f, 0.0f,
+                               1.0f, -1.0f, 0.0f,
+                               1.0f, 1.0f, 0.0f,
+                              -1.0f, 1.0f, 0.0f,
+                              // u,v,pfar,pnear
+                               0.0f, 1.0f, 0, 0,
+                               1.0f, 1.0f, 0, 0,
+                               1.0f, 0.0f, 0, 0,
+                               0.0f, 0.0f, 0, 0};
+        static float verts_mono[] = {
+                              // pos
+                              -mono_h, -mono_v, 0.0f,
+                               mono_h, -mono_v, 0.0f,
+                               mono_h,  mono_v, 0.0f,
+                              -mono_h,  mono_v, 0.0f,
+                              // u,v,pfar,pnear
+                               0.0f, 1.0f, 0, 0,
+                               1.0f, 1.0f, 0, 0,
+                               1.0f, 0.0f, 0, 0,
+                               0.0f, 0.0f, 0, 0};
+        static float verts_stereo[] = {
+                              // pos
+                              -0.9f, -vratio, 0.0f,
+                               -0.1f, -vratio, 0.0f,
+                               -0.1f, vratio, 0.0f,
+                              -0.9f, vratio, 0.0f,
+                               0.1f, -vratio, 0.0f,
+                               0.9f, -vratio, 0.0f,
+                               0.9f, vratio, 0.0f,
+                               0.1f, vratio, 0.0f,
+                              // u,v,pfar,pnear
+                               0.0f, 1.0f, 0, 0,
+                               1.0f, 1.0f, 0, 0,
+                               1.0f, 0.0f, 0, 0,
+                               0.0f, 0.0f, 0, 0,
+                               0.0f, 1.0f, 0, 0,
+                               1.0f, 1.0f, 0, 0,
+                               1.0f, 0.0f, 0, 0,
+                               0.0f, 0.0f, 0, 0};
+        glBindBuffer(GL_ARRAY_BUFFER, quilt->quad_vbo);
+        glEnableVertexAttribArray(0);
+        glEnableVertexAttribArray(1);
+
+        if (mode == SHADOWBOX_MODE_BASIC_QUILT_FULL)
+        {
+            float* uvfn = verts_full + 3*4;
+            uvfn[0*4+0] = 0.0; uvfn[0*4+1] = 1.0;
+            uvfn[1*4+0] = 1.0; uvfn[1*4+1] = 1.0;
+            uvfn[2*4+0] = 1.0; uvfn[2*4+1] = 0.0;
+            uvfn[3*4+0] = 0.0; uvfn[3*4+1] = 0.0;
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (const void*)(4 * 3 * sizeof(float)));  
+            glBufferData(GL_ARRAY_BUFFER, sizeof(verts_full), verts_full, GL_STATIC_DRAW);
+            glDrawArrays(GL_QUADS, 0, 4);
+        }
+        else if (mode == SHADOWBOX_MODE_BASIC_QUILT_MONO)
+        {
+            float* uvfn = verts_mono + 3*4;
+            float view_angle_t = (view_angle - view_angle_min) / (view_angle_max - view_angle_min);
+            int tile = quilt->num_tiles * view_angle_t;
+            if (tile < 0)
+                tile = 0;
+            if (tile > (int)quilt->num_tiles - 1)
+                tile = (int)quilt->num_tiles - 1;
+            float du = 1.0f / (float)quilt->num_tiles_x;
+            float dv = 1.0f / (float)quilt->num_tiles_y;
+            float u0 = du * (float)(tile % quilt->num_tiles_x);
+            float v0 = dv * (float)(tile / quilt->num_tiles_x);
+            uvfn[0*4+0] = u0;      uvfn[0*4+1] = v0 + dv;
+            uvfn[1*4+0] = u0 + du; uvfn[1*4+1] = v0 + dv;
+            uvfn[2*4+0] = u0 + du; uvfn[2*4+1] = v0;
+            uvfn[3*4+0] = u0;      uvfn[3*4+1] = v0;
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (const void*)(4 * 3 * sizeof(float)));  
+            glBufferData(GL_ARRAY_BUFFER, sizeof(verts_mono), verts_mono, GL_STATIC_DRAW);
+            glDrawArrays(GL_QUADS, 0, 4);
+        }
+        else
+        {
+            float view_angle_t = (view_angle - view_angle_min) / (view_angle_max - view_angle_min);
+            int tile_center = quilt->num_tiles * view_angle_t;
+            int eye_halfdist_tiles = 5;
+            if (tile_center < eye_halfdist_tiles)
+                tile_center = eye_halfdist_tiles;
+            if (tile_center > (int)quilt->num_tiles - eye_halfdist_tiles - 1)
+                tile_center = (int)quilt->num_tiles - eye_halfdist_tiles - 1;
+            int tiles[2];
+            tiles[0] = tile_center - eye_halfdist_tiles;
+            tiles[1] = tile_center + eye_halfdist_tiles;
+            float du = 1.0f / (float)quilt->num_tiles_x;
+            float dv = 1.0f / (float)quilt->num_tiles_y;
+            for (int eye = 0; eye < 2; ++eye)
+            {
+                int tile = tiles[eye];
+                float u0 = du * (float)(tile % quilt->num_tiles_x);
+                float v0 = dv * (float)(tile / quilt->num_tiles_x);
+                float* uvfn = verts_stereo + 2*3*4 + 4*4*eye;
+                uvfn[0*4+0] = u0;      uvfn[0*4+1] = v0 + dv;
+                uvfn[1*4+0] = u0 + du; uvfn[1*4+1] = v0 + dv;
+                uvfn[2*4+0] = u0 + du; uvfn[2*4+1] = v0;
+                uvfn[3*4+0] = u0;      uvfn[3*4+1] = v0;
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+                glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, (const void*)(4 * 3 * 2 * sizeof(float)));  
+                glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+                glDrawArrays(GL_QUADS, 0, 8);
+            }
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glUseProgram(old_program);
+    }
+
+    int mode;
+	Quilt *quilt;
+    float view_angle_min;
+    float view_angle_max;
+    float view_angle;
+    PFNGLUSEPROGRAMPROC        glUseProgram       ;
+    PFNGLCREATESHADERPROC      glCreateShader     ;
+    PFNGLSHADERSOURCEPROC      glShaderSource     ;
+    PFNGLCOMPILESHADERPROC     glCompileShader    ;
+    PFNGLGETSHADERIVPROC       glGetShaderiv      ;
+    PFNGLGETSHADERINFOLOGPROC  glGetShaderInfoLog ;
+    PFNGLATTACHSHADERPROC      glAttachShader     ;
+    PFNGLCREATEPROGRAMPROC     glCreateProgram    ;
+    PFNGLLINKPROGRAMPROC       glLinkProgram      ;
+    PFNGLGETPROGRAMIVPROC      glGetProgramiv     ;
+    PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog;
+    PFNGLVALIDATEPROGRAMPROC   glValidateProgram  ;
+    PFNGLBINDBUFFERPROC        glBindBuffer       ;
+    PFNGLGENBUFFERSPROC        glGenBuffers       ;
+    PFNGLBUFFERDATAPROC        glBufferData       ;
+    PFNGLUNIFORM1IPROC         glUniform1i        ;
+    PFNGLGETUNIFORMLOCATIONPROC      glGetUniformLocation      ;
+    PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray ;
+    PFNGLVERTEXATTRIBPOINTERPROC     glVertexAttribPointer     ;
+    PFNGLTEXSTORAGE2DPROC     glTexStorage2D     ;
+};
+
+
+static Shadowbox* shadowbox = NULL;
+
+
+
+
+
+
 //============================================================
 //  sdl_info::draw
 //============================================================
 
 int renderer_ogl::draw(const int update)
 {
+	if (do_lightfield)
+	{
+		if (!shadowbox)
+			shadowbox = new Shadowbox();
+	}
 	ogl_texture_info *texture=nullptr;
 	float vofs, hofs;
 	int  pendingPrimitive=GL_NO_PRIMITIVE, curPrimitive=GL_NO_PRIMITIVE;

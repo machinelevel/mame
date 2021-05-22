@@ -503,6 +503,7 @@ void renderer_sdl2::destroy_all_textures()
 
 int renderer_sdl2::draw(int update)
 {
+printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
 	texture_info *texture=nullptr;
 	float vofs, hofs;
 	int blit_pixels = 0;

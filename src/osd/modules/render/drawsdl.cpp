@@ -288,6 +288,7 @@ void renderer_sdl1::destroy_all_textures()
 
 int renderer_sdl1::draw(int update)
 {
+printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
 	const sdl_scale_mode *sm = &scale_modes[video_config.scale_mode];
 	uint8_t *surfptr;
 	int32_t pitch;

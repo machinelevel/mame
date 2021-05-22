@@ -112,7 +112,18 @@ void vector_device::add_point(int x, int y, rgb_t color, int intensity)
 
 	m_min_intensity = intensity > 0 ? std::min(m_min_intensity, intensity) : m_min_intensity;
 	m_max_intensity = intensity > 0 ? std::max(m_max_intensity, intensity) : m_max_intensity;
-
+// ejejej
+if (0)
+{
+	static int stop_timer = 0;
+	if (stop_timer++ > 20000)
+	{
+		printf("stop here\n");
+		*(int*)5 = 6;
+	}
+	else if ((stop_timer % 100) == 0)
+		printf("stop timer %d\n", stop_timer);
+}
 	if (vector_options::s_flicker && (intensity > 0))
 	{
 		float random = (float)(machine().rand() & 255) / 255.0f; // random value between 0.0 and 1.0

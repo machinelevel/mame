@@ -381,9 +381,69 @@ void tempest_state::wdclr_w(uint8_t data)
  *
  *************************************/
 
+#include <stdio.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdint.h>
+static int ej_read_knob()
+{
+    int speed_mult = 2;
+    static int knob_fd = -1;
+    static int real_count = -1;
+    if (knob_fd < 0)
+    {
+        const char* knob_dev_name = "/dev/input/by-id/usb-Griffin_Technology__Inc._Griffin_PowerMate-event-if00";
+        knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
+        if (knob_fd >= 0)
+            printf("--> Successfully opened the dev.\n");
+        else
+            printf("--> failed to open the dev.\n");
+    }
+    if (knob_fd >= 0)
+    {
+        char buffer[1024];
+        int result = read(knob_fd, buffer, sizeof(buffer) - 1);
+        if (result > 0)
+        {
+            // printf("Got %d bytes! ", result);
+            // for (int i = 0; i < result; ++i)
+            //     printf("%02x ", buffer[i]);
+            // printf("\n");
+            int packet_start = 0;
+            while (result - packet_start >= 32)
+            {
+                int32_t direction = 0;
+                for (int i = 0; i < 4; ++i)
+                    direction |= ((int32_t)buffer[i + 12 + packet_start]) << (i * 8);
+                if (direction == 1 || direction == -1)
+                    real_count += speed_mult * direction;
+                packet_start += 32;
+            }
+//            printf("real_count: %d\n", real_count);
+        }
+        else
+        {
+//            extern const int errno;
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                printf("--> Lost contact.");
+                close(knob_fd);
+                knob_fd = -1;
+            }
+        }
+    }
+    return 240 + (((uint32_t)real_count) & 0x0f);
+}
+
 CUSTOM_INPUT_MEMBER(tempest_state::tempest_knob_r)
 {
-	return (m_player_select == 0) ? m_knob_p1->read() : m_knob_p2->read();
+    // ejejej
+//    unsigned int raw_knob = m_knob_p1->read();
+    unsigned int ej_knob = ej_read_knob();
+//    printf("...knob %u %x\n", raw_knob, raw_knob);
+    return (m_player_select == 0) ? ej_knob : m_knob_p2->read();
+//    return (m_player_select == 0) ? m_knob_p1->read() : m_knob_p2->read();
 }
 
 CUSTOM_INPUT_MEMBER(tempest_state::tempest_buttons_r)
