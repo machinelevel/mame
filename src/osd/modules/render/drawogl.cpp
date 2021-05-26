@@ -1081,16 +1081,13 @@ public:
             0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
             0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
         };
-        // uint64_t num64s = row_64s * full_size_y;
-        // for (uint64_t i = 0; i < num64s; ++i)
-        //     ((uint64_t*)tex16_pixels)[i] = 0xf000f000f000f000LL;
         for (uint32_t ti = 0; ti < num_tiles; ++ti)
         {
             uint32_t tx = ti % num_tiles_x;
             uint32_t ty = ti / num_tiles_x;
             uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
             uint64_t color = color64s[(tx + 3*ty) % num_colors];
-            color = 0;
+//            color = 0;
             int tile_x_64s = tex16_row_64s / num_tiles_x;
             for (int y = 0; y < tile_size_y; ++y)
             {
@@ -1099,6 +1096,12 @@ public:
                 dst_row += tex16_row_64s;
             }
         }
+        if (0) // Fill full buffer
+        {
+	        uint64_t num64s = tex16_row_64s * full_size_y;
+	        for (uint64_t i = 0; i < num64s; ++i)
+	            ((uint64_t*)&tex16_pixels[0])[i] = 0xf0fff0ffff0fff0fLL;
+	    }
     }
 
 
@@ -1222,7 +1225,10 @@ public:
 	    "    void main() {    "
 	    "       vec4 color1 = texture2D(tx_color,uv_fn.xy);    "
 	    "       vec4 color2 = vec4(uv_fn.x, uv_fn.y, 0, 1);    "
-	    "       gl_FragColor = vec4(color1.xyz, 1);    "
+	    "       if (uv_fn.x > 0.10)    "
+	    "         gl_FragColor = vec4(color1.xyz, 1);    "
+	    "       else    "
+  	    "         gl_FragColor = vec4(color2.xyz, 1);    "
 	    "    }    ";
 	    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
 	    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
@@ -1250,12 +1256,13 @@ public:
 	    printf("Quilt shaders compiled ok.\n");
 	}
 
-    void draw_whole_quilt_to_screen()
+    void draw_whole_quilt_to_screen(float screen_w, float screen_h)
     {
         GLint old_program;
         glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
-        glClear(GL_COLOR_BUFFER_BIT);
+//        glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(quilt->plain_shader);
+		glEnable(GL_TEXTURE_2D);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
         glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
@@ -1279,9 +1286,9 @@ public:
         static float verts_full[] = {
                               // pos
                               -1.0f, -1.0f, 0.0f,
-                               1.0f, -1.0f, 0.0f,
-                               1.0f, 1.0f, 0.0f,
-                              -1.0f, 1.0f, 0.0f,
+                              1.0, -1.0, 0.0f,
+                              1.0, 1.0, 0.0f,
+                              -1.0, 1.0, 0.0f,
                               // u,v,pfar,pnear
                                0.0f, 1.0f, 0, 0,
                                1.0f, 1.0f, 0, 0,
@@ -1389,6 +1396,18 @@ public:
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, 0);
         glUseProgram(old_program);
+		glDisable(GL_TEXTURE_2D);
+
+		glColor4f(1.0, 1.0, 0.0, 1.0);
+		glLineWidth(4.0);
+		glBegin(GL_LINES);
+		glVertex2f(0.0f, 0.0f);
+		glVertex2f(100.0f, 100.0f);
+		glVertex2f(0.0f, 0.0f);
+		glVertex2f(screen_w, screen_h);
+		glEnd();
+
+
     }
 
     int mode;
@@ -1432,11 +1451,6 @@ static Shadowbox* shadowbox = NULL;
 
 int renderer_ogl::draw(const int update)
 {
-	if (do_lightfield)
-	{
-		if (!shadowbox)
-			shadowbox = new Shadowbox();
-	}
 	ogl_texture_info *texture=nullptr;
 	float vofs, hofs;
 	int  pendingPrimitive=GL_NO_PRIMITIVE, curPrimitive=GL_NO_PRIMITIVE;
@@ -1828,6 +1842,13 @@ int renderer_ogl::draw(const int update)
 
 	win->m_primlist->release_lock();
 	m_init_context = 0;
+
+	if (do_lightfield)
+	{
+		if (!shadowbox)
+			shadowbox = new Shadowbox();
+		shadowbox->draw_whole_quilt_to_screen(m_width, m_height);
+	}
 
 	m_gl_context->SwapBuffer();
 
