@@ -1119,7 +1119,9 @@ public:
 
     GLuint tex16_id;
     GLuint quad_vbo;
+	GLuint depthrenderbuffer;
     GLuint plain_shader;
+    GLuint framebuffer;
 };
 
 class Shadowbox
@@ -1146,6 +1148,93 @@ public:
 		quilt = new Quilt(512, 680, 9, 5);
         compile_quilt_shaders();
 		quilt->make_test_pattern();
+
+// int texture_fbo_create(uint32_t text_unit, uint32_t text_name, uint32_t fbo_name, int width, int height);
+// int fbresult = texture_fbo_create(GL_TEXTURE0, quilt->tex16_id, quilt->framebuffer, 640, 480);
+// printf(">> ej fbresult = %d\n", fbresult);
+#if 0
+if (0) {
+glActiveTexture(GL_TEXTURE0);
+// Set it up as a framebuffer
+glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
+
+// "Bind" the newly created texture : all future texture functions will modify this texture
+glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+
+// Give an empty image to OpenGL ( the last "0" )
+glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
+
+// Poor filtering. Needed !
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+// The depth buffer
+GLuint depthrenderbuffer;
+glGenRenderbuffers(1, &depthrenderbuffer);
+glBindRenderbuffer(GL_RENDERBUFFER, depthrenderbuffer);
+glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1024, 768);
+glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthrenderbuffer);
+
+// Set "renderedTexture" as our colour attachement #0
+glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, quilt->tex16_id, 0);
+
+// Set the list of draw buffers.
+GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
+glDrawBuffers(1, draw_buffers); // "1" is the size of DrawBuffers
+
+if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+	printf(">>NEW>> ERROR: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
+else
+	printf("OOOOOKKKKKKK\n");
+
+}
+#endif
+
+
+
+		// Make the texture
+		// TODO: We can delete the quilt buffer after this
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+        // glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
+        // glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+        // glPixelStorei(GL_UNPACK_SKIP_ROWS,    0);
+        // glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
+        // glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
+        // glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
+		glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
+        // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
+        //              0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+//                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
+        // glBindTexture(GL_TEXTURE_2D, 0);
+        // glDisable(GL_TEXTURE_2D);
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+#if 1
+		// The depth buffer
+		glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, quilt->full_size_x, quilt->full_size_y);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
+#endif
+		//789789
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quilt->tex16_id, 0);
+		GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, draw_buffers); // "1" is the size of draw_buffers
+		if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+			printf("ERROR: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
+		else
+			printf("->render to texture looks ok!\n");
+
+		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
+		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
+        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
     void init_gl_extensions()
@@ -1172,6 +1261,18 @@ public:
             glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
             glVertexAttribPointer     = (PFNGLVERTEXATTRIBPOINTERPROC)     SDL_GL_GetProcAddress("glVertexAttribPointer");
             glTexStorage2D     = (PFNGLTEXSTORAGE2DPROC)     SDL_GL_GetProcAddress("glTexStorage2D");
+
+            glBindFramebuffer     = (PFNGLBINDFRAMEBUFFERPROC)     SDL_GL_GetProcAddress("glBindFramebuffer");
+            glFramebufferTexture     = (PFNGLFRAMEBUFFERTEXTUREPROC)     SDL_GL_GetProcAddress("glFramebufferTexture");
+            glFramebufferTexture2D     = (PFNGLFRAMEBUFFERTEXTURE2DPROC)     SDL_GL_GetProcAddress("glFramebufferTexture2D");
+            glDrawBuffers     = (PFNGLDRAWBUFFERSPROC)     SDL_GL_GetProcAddress("glDrawBuffers");
+            glCheckFramebufferStatus     = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)     SDL_GL_GetProcAddress("glCheckFramebufferStatus");
+            glGenFramebuffers     = (PFNGLGENFRAMEBUFFERSPROC)     SDL_GL_GetProcAddress("glGenFramebuffers");
+
+            glGenRenderbuffers     = (PFNGLGENRENDERBUFFERSPROC)            SDL_GL_GetProcAddress("glGenRenderbuffers");
+            glBindRenderbuffer     = (PFNGLBINDRENDERBUFFERPROC)            SDL_GL_GetProcAddress("glBindRenderbuffer");
+            glRenderbufferStorage     = (PFNGLRENDERBUFFERSTORAGEPROC)         SDL_GL_GetProcAddress("glRenderbufferStorage");
+            glFramebufferRenderbuffer     = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)     SDL_GL_GetProcAddress("glFramebufferRenderbuffer");
         }
     }
 
@@ -1225,7 +1326,7 @@ public:
 	    "    void main() {    "
 	    "       vec4 color1 = texture2D(tx_color,uv_fn.xy);    "
 	    "       vec4 color2 = vec4(uv_fn.x, uv_fn.y, 0, 1);    "
-	    "       if (uv_fn.x > 0.10)    "
+	    "       if (uv_fn.x > 0.02)    "
 	    "         gl_FragColor = vec4(color1.xyz, 1);    "
 	    "       else    "
   	    "         gl_FragColor = vec4(color2.xyz, 1);    "
@@ -1253,26 +1354,109 @@ public:
 	    quilt->plain_shader = shader_program;
 	    glGenTextures(1, &quilt->tex16_id);
 	    glGenBuffers(1, &quilt->quad_vbo);
+		glGenRenderbuffers(1, &quilt->depthrenderbuffer);
+
+		glGenFramebuffers(1, &quilt->framebuffer);
 	    printf("Quilt shaders compiled ok.\n");
 	}
+
+    void test_render_into_quilt(float screen_w, float screen_h)
+    {
+    	int err;
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+		// glDisable(GL_TEXTURE_2D);
+		glDisable(GL_DEPTH_TEST);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		// Render to our framebuffer
+		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
+		glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
+		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quilt->tex16_id, 0);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
+		glDrawBuffers(1, draw_buffers); // "1" is the size of draw_buffers
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+
+		if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		{
+			printf("ERROR555: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
+			return;
+		}
+		else
+			printf("->555 render to texture looks ok!\n");
+
+        glClearColor(0.0f, 1.0f, 1.0f, 1.0f);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+        glClear(GL_COLOR_BUFFER_BIT);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+
+        for (int ty = 0; 0 &&  ty < quilt->num_tiles_y; ++ty)
+        {
+            for (int tx = 0; tx < quilt->num_tiles_x; ++tx)
+            {
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+				glColor4f(1.0, 0.0, 0.0, 1.0);
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+				glLineWidth(4.0);
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+				glBegin(GL_LINES);
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+				glVertex2f(10000.0f, 0.0f);
+				glVertex2f(0.0f, 10000.0f);
+				glVertex2f(screen_w/2, 0.0f);
+				glVertex2f(screen_w, screen_h);
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+				glEnd();
+				while ((err = glGetError()) != GL_NO_ERROR)
+					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+            }
+        }
+        glFinish();
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+		glViewport(0,0,screen_w, screen_h);
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+    }
 
     void draw_whole_quilt_to_screen(float screen_w, float screen_h)
     {
         GLint old_program;
+		glDisable(GL_BLEND);
         glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
 //        glClear(GL_COLOR_BUFFER_BIT);
         glUseProgram(quilt->plain_shader);
 		glEnable(GL_TEXTURE_2D);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
-        glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
-        glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
-        glPixelStorei(GL_UNPACK_SKIP_ROWS,    0);
-        glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
-        glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
-        glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
-                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
+        // glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
+        // glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+        // glPixelStorei(GL_UNPACK_SKIP_ROWS,    0);
+        // glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
+        // glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
+        // glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
+        // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
+        //              0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
         glUniform1i(glGetUniformLocation(quilt->plain_shader, "tx_color"), 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1398,14 +1582,18 @@ public:
         glUseProgram(old_program);
 		glDisable(GL_TEXTURE_2D);
 
-		glColor4f(1.0, 1.0, 0.0, 1.0);
-		glLineWidth(4.0);
-		glBegin(GL_LINES);
-		glVertex2f(0.0f, 0.0f);
-		glVertex2f(100.0f, 100.0f);
-		glVertex2f(0.0f, 0.0f);
-		glVertex2f(screen_w, screen_h);
-		glEnd();
+		glViewport(0.0, 0.0, screen_w, screen_h);
+		if (0)
+		{
+			glColor4f(1.0, 1.0, 0.0, 1.0);
+			glLineWidth(4.0);
+			glBegin(GL_LINES);
+			glVertex2f(0.0f, 0.0f);
+			glVertex2f(100.0f, 100.0f);
+			glVertex2f(0.0f, 0.0f);
+			glVertex2f(screen_w, screen_h);
+			glEnd();
+		}
 
 
     }
@@ -1435,6 +1623,17 @@ public:
     PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray ;
     PFNGLVERTEXATTRIBPOINTERPROC     glVertexAttribPointer     ;
     PFNGLTEXSTORAGE2DPROC     glTexStorage2D     ;
+    PFNGLBINDFRAMEBUFFERPROC     glBindFramebuffer     ;
+    PFNGLFRAMEBUFFERTEXTUREPROC     glFramebufferTexture     ;
+    PFNGLFRAMEBUFFERTEXTURE2DPROC     glFramebufferTexture2D     ;
+    PFNGLDRAWBUFFERSPROC     glDrawBuffers     ;
+    PFNGLCHECKFRAMEBUFFERSTATUSPROC     glCheckFramebufferStatus     ;
+    PFNGLGENFRAMEBUFFERSPROC     glGenFramebuffers     ;
+
+    PFNGLGENRENDERBUFFERSPROC           glGenRenderbuffers           ;
+    PFNGLBINDRENDERBUFFERPROC           glBindRenderbuffer           ;
+    PFNGLRENDERBUFFERSTORAGEPROC        glRenderbufferStorage         ;
+    PFNGLFRAMEBUFFERRENDERBUFFERPROC     glFramebufferRenderbuffer     ;
 };
 
 
@@ -1847,6 +2046,7 @@ int renderer_ogl::draw(const int update)
 	{
 		if (!shadowbox)
 			shadowbox = new Shadowbox();
+		shadowbox->test_render_into_quilt(m_width, m_height);
 		shadowbox->draw_whole_quilt_to_screen(m_width, m_height);
 	}
 
@@ -2123,7 +2323,8 @@ static int gl_checkFramebufferStatus()
 	return -1;
 }
 
-static int texture_fbo_create(uint32_t text_unit, uint32_t text_name, uint32_t fbo_name, int width, int height)
+//static 
+int texture_fbo_create(uint32_t text_unit, uint32_t text_name, uint32_t fbo_name, int width, int height)
 {
 	pfn_glActiveTexture(text_unit);
 	pfn_glBindFramebuffer(GL_FRAMEBUFFER_EXT, fbo_name);
