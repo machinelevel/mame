@@ -1047,62 +1047,43 @@ public:
         num_tiles = num_tiles_x * num_tiles_y;
         full_size_x = tile_size_x * num_tiles_x;
         full_size_y = tile_size_y * num_tiles_y;
-
-        tex16_row_bytes = full_size_x * sizeof(uint16_t);
-        tex16_row_64s = tex16_row_bytes / sizeof(uint64_t);
-        tex16_pixels.resize(tex16_row_64s * full_size_y);
-        tex16_tile_address.resize(num_tiles);
-
-        for (int ty = 0; ty < num_tiles_y; ++ty)
-        {
-            for (int tx = 0; tx < num_tiles_x; ++tx)
-            {
-                int ti = tx + ty * num_tiles_x;
-                tex16_tile_address[ti] = ((uint16_t*)&tex16_pixels[0]) +
-                                         tx * tile_size_x +
-                                         ty * tile_size_y * num_tiles_x * tile_size_x;
-            }
-        }
-
-        // tex16 = SDL_CreateTexture(sdl_renderer, SDL_PIXELFORMAT_RGB565,
-        //                           SDL_TEXTUREACCESS_STREAMING, full_size_x, full_size_y);
-        printf(">> Quilt tile_size:%dx%d, num_tiles:%dx%d, total:%dx%d tex16:%p (%dMB)\n",
+        printf(">> Quilt tile_size:%dx%d, num_tiles:%dx%d, total:%dx%d (%dMB)\n",
                tile_size_x, tile_size_y, num_tiles_x, num_tiles_y,
-               full_size_x, full_size_y, (void*)&tex16_pixels[0], (int)((8 * tex16_row_64s * full_size_y) / 1048576));
+               full_size_x, full_size_y, (int)((2 * full_size_x * full_size_y) / 1048576));
     }
     ~Quilt()
     {
     }
 
-    void make_test_pattern()
-    {
-        const int num_colors = 8;
-        uint64_t color64s[num_colors] = {
-            0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
-            0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
-        };
-        for (uint32_t ti = 0; ti < num_tiles; ++ti)
-        {
-            uint32_t tx = ti % num_tiles_x;
-            uint32_t ty = ti / num_tiles_x;
-            uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
-            uint64_t color = color64s[(tx + 3*ty) % num_colors];
-//            color = 0;
-            int tile_x_64s = tex16_row_64s / num_tiles_x;
-            for (int y = 0; y < tile_size_y; ++y)
-            {
-                for (int x = 0; x < tile_x_64s; ++x)
-                    dst_row[x] = color;
-                dst_row += tex16_row_64s;
-            }
-        }
-        if (0) // Fill full buffer
-        {
-	        uint64_t num64s = tex16_row_64s * full_size_y;
-	        for (uint64_t i = 0; i < num64s; ++i)
-	            ((uint64_t*)&tex16_pixels[0])[i] = 0xf0fff0ffff0fff0fLL;
-	    }
-    }
+//     void make_test_pattern()
+//     {
+//         const int num_colors = 8;
+//         uint64_t color64s[num_colors] = {
+//             0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
+//             0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
+//         };
+//         for (uint32_t ti = 0; ti < num_tiles; ++ti)
+//         {
+//             uint32_t tx = ti % num_tiles_x;
+//             uint32_t ty = ti / num_tiles_x;
+//             uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
+//             uint64_t color = color64s[(tx + 3*ty) % num_colors];
+// //            color = 0;
+//             int tile_x_64s = tex16_row_64s / num_tiles_x;
+//             for (int y = 0; y < tile_size_y; ++y)
+//             {
+//                 for (int x = 0; x < tile_x_64s; ++x)
+//                     dst_row[x] = color;
+//                 dst_row += tex16_row_64s;
+//             }
+//         }
+//         if (0) // Fill full buffer
+//         {
+// 	        uint64_t num64s = tex16_row_64s * full_size_y;
+// 	        for (uint64_t i = 0; i < num64s; ++i)
+// 	            ((uint64_t*)&tex16_pixels[0])[i] = 0xf0fff0ffff0fff0fLL;
+// 	    }
+//     }
 
 
 //protected:
@@ -1111,11 +1092,6 @@ public:
     int full_size_x, full_size_y;
     uint32_t num_tiles;
     std::vector<int16_t>   tile_parallax_table;
-
-    std::vector<uint64_t>  tex16_pixels;
-    std::vector<uint16_t*> tex16_tile_address;
-    int tex16_row_bytes;
-    int tex16_row_64s;
 
     GLuint tex16_id;
     GLuint quad_vbo;
@@ -1147,80 +1123,21 @@ public:
         init_gl_extensions();
 		quilt = new Quilt(512, 680, 9, 5);
         compile_quilt_shaders();
-		quilt->make_test_pattern();
-
-// int texture_fbo_create(uint32_t text_unit, uint32_t text_name, uint32_t fbo_name, int width, int height);
-// int fbresult = texture_fbo_create(GL_TEXTURE0, quilt->tex16_id, quilt->framebuffer, 640, 480);
-// printf(">> ej fbresult = %d\n", fbresult);
-#if 0
-if (0) {
-glActiveTexture(GL_TEXTURE0);
-// Set it up as a framebuffer
-glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
-
-// "Bind" the newly created texture : all future texture functions will modify this texture
-glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
-
-// Give an empty image to OpenGL ( the last "0" )
-glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
-
-// Poor filtering. Needed !
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-// The depth buffer
-GLuint depthrenderbuffer;
-glGenRenderbuffers(1, &depthrenderbuffer);
-glBindRenderbuffer(GL_RENDERBUFFER, depthrenderbuffer);
-glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, 1024, 768);
-glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthrenderbuffer);
-
-// Set "renderedTexture" as our colour attachement #0
-glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, quilt->tex16_id, 0);
-
-// Set the list of draw buffers.
-GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
-glDrawBuffers(1, draw_buffers); // "1" is the size of DrawBuffers
-
-if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-	printf(">>NEW>> ERROR: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
-else
-	printf("OOOOOKKKKKKK\n");
-
-}
-#endif
-
-
 
 		// Make the texture
-		// TODO: We can delete the quilt buffer after this
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
-        // glPixelStorei(GL_UNPACK_ROW_LENGTH,   0);
-        // glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
-        // glPixelStorei(GL_UNPACK_SKIP_ROWS,    0);
-        // glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
-        // glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
-        // glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
-//		glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
                      0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
-//                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
-        // glBindTexture(GL_TEXTURE_2D, 0);
-        // glDisable(GL_TEXTURE_2D);
-
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-#if 1
+#if 0
 		// The depth buffer
 		glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
 		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, quilt->full_size_x, quilt->full_size_y);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
 #endif
-		//789789
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quilt->tex16_id, 0);
 		GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
 		glDrawBuffers(1, draw_buffers); // "1" is the size of draw_buffers
@@ -1228,12 +1145,6 @@ else
 			printf("ERROR: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
 		else
 			printf("->render to texture looks ok!\n");
-
-//		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
-//		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
-//        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-//        glClear(GL_COLOR_BUFFER_BIT);
-
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
 
@@ -1362,38 +1273,26 @@ else
 
     void test_render_into_quilt(float screen_w, float screen_h)
     {
-    	int err;
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
-		// glDisable(GL_TEXTURE_2D);
-		glDisable(GL_DEPTH_TEST);
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		// Render to our framebuffer
-#if 1
+    	int err;
+//        glActiveTexture(GL_TEXTURE0);
+//        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+		glDisable(GL_DEPTH_TEST);
 		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
-		if (1)
+		if (0)
 		{
 			glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
 		}
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quilt->tex16_id, 0);
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		GLenum draw_buffers[1] = {GL_COLOR_ATTACHMENT0};
 		glDrawBuffers(1, draw_buffers); // "1" is the size of draw_buffers
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 
 		if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
 		{
 			printf("ERROR555: quilt framebuffer is not ok: 0x%x\n", (int)glCheckFramebufferStatus(GL_FRAMEBUFFER));
 			return;
 		}
-		else
-			printf("->555 render to texture looks ok!\n");
 
 		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
 		glMatrixMode(GL_PROJECTION);
@@ -1403,16 +1302,9 @@ else
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 		glLoadIdentity();
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
-#endif
 
         glClearColor(0.0f, 0.25f, 0.25f, 0.0f);
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
         glClear(GL_COLOR_BUFFER_BIT);
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 		glDisable(GL_TEXTURE_2D);
@@ -1420,41 +1312,24 @@ else
         {
 //            for (int tx = 0; tx < quilt->num_tiles_x; ++tx)
             {
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glColor4f(1.0, 0.0, 0.0, 1.0);
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glLineWidth(30.0);
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glBegin(GL_LINES);
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glVertex3f(0.0f, 0.0f, 0.0f);
 				glVertex3f(1000.0f, 1000.0f, 0.0f);
-//				glVertex2f(screen_w/2, 0.0f);
-//				glVertex2f(screen_w, screen_h);
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glEnd();
-				while ((err = glGetError()) != GL_NO_ERROR)
-					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
             }
         }
         glFinish();
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 		glMatrixMode(GL_PROJECTION);
 		glPopMatrix();
 		glMatrixMode(GL_MODELVIEW);
 		glPopMatrix();
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glViewport(0,0,screen_w, screen_h);
-		while ((err = glGetError()) != GL_NO_ERROR)
+		bool warn = false;
+		if ((err = glGetError()) != GL_NO_ERROR && warn)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
     }
 
@@ -1614,8 +1489,6 @@ else
 			glVertex2f(screen_w, screen_h);
 			glEnd();
 		}
-
-
     }
 
     int mode;
@@ -1841,215 +1714,358 @@ int renderer_ogl::draw(const int update)
 
 	win->m_primlist->acquire_lock();
 
-	// now draw
-	for (render_primitive &prim : *win->m_primlist)
+	if (do_lightfield)
 	{
-		int i;
+		if (!shadowbox)
+			shadowbox = new Shadowbox();
+		shadowbox->test_render_into_quilt(m_width, m_height);
 
-		switch (prim.type)
+		float qsx = 1.0f;
+		float qsy = 1.0f;
+		float qtx = 0.0f;
+		float qty = 0.0f;
+		float qwidth = 10.0f;
+
+		//////////////////// lightfield-quilt draw
+		// now draw
+		for (render_primitive &prim : *win->m_primlist)
 		{
-			/**
-			 * Try to stay in one Begin/End block as long as possible,
-			 * since entering and leaving one is most expensive..
-			 */
-			case render_primitive::LINE:
-				#if !USE_WIN32_STYLE_LINES
-				// check if it's really a point
-				if (((prim.bounds.x1 - prim.bounds.x0) == 0) && ((prim.bounds.y1 - prim.bounds.y0) == 0))
-				{
-					curPrimitive=GL_POINTS;
-				} else {
-					curPrimitive=GL_LINES;
-				}
+			int i;
 
-				if(pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
-				{
-					glEnd();
-					pendingPrimitive=GL_NO_PRIMITIVE;
-				}
+			switch (prim.type)
+			{
+				/**
+				 * Try to stay in one Begin/End block as long as possible,
+				 * since entering and leaving one is most expensive..
+				 */
+				case render_primitive::LINE:
+					// check if it's really a point
+					if (((prim.bounds.x1 - prim.bounds.x0) == 0) && ((prim.bounds.y1 - prim.bounds.y0) == 0))
+					{
+						curPrimitive=GL_POINTS;
+					} else {
+						curPrimitive=GL_LINES;
+					}
 
-						if ( pendingPrimitive==GL_NO_PRIMITIVE )
-				{
-							set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
-				}
-
-				glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
-
-				if(pendingPrimitive!=curPrimitive)
-				{
-					glLineWidth(prim.width);
-					glBegin(curPrimitive);
-					pendingPrimitive=curPrimitive;
-				}
-
-				// check if it's really a point
-				if (curPrimitive==GL_POINTS)
-				{
-					glVertex2f(prim.bounds.x0+hofs, prim.bounds.y0+vofs);
-				}
-				else
-				{
-					glVertex2f(prim.bounds.x0+hofs, prim.bounds.y0+vofs);
-					glVertex2f(prim.bounds.x1+hofs, prim.bounds.y1+vofs);
-				}
-				#else
-				{
-					const line_aa_step *step = line_aa_4step;
-					render_bounds b0, b1;
-					float r, g, b, a;
-					float effwidth;
-
-					// we're not gonna play fancy here.  close anything pending and let's go.
-					if (pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
+					if(pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
 					{
 						glEnd();
 						pendingPrimitive=GL_NO_PRIMITIVE;
 					}
 
-					set_blendmode(sdl, PRIMFLAG_GET_BLENDMODE(prim.flags));
-
-					// compute the effective width based on the direction of the line
-					effwidth = prim.width();
-					if (effwidth < 0.5f)
-						effwidth = 0.5f;
-
-					// determine the bounds of a quad to draw this line
-					render_line_to_quad(&prim.bounds, effwidth, 0.0f, &b0, &b1);
-
-					// fix window position
-					b0.x0 += hofs;
-					b0.x1 += hofs;
-					b1.x0 += hofs;
-					b1.x1 += hofs;
-					b0.y0 += vofs;
-					b0.y1 += vofs;
-					b1.y0 += vofs;
-					b1.y1 += vofs;
-
-					// iterate over AA steps
-					for (step = PRIMFLAG_GET_ANTIALIAS(prim.flags) ? line_aa_4step : line_aa_1step; step->weight != 0; step++)
+							if ( pendingPrimitive==GL_NO_PRIMITIVE )
 					{
-						glBegin(GL_TRIANGLE_STRIP);
-
-						// rotate the unit vector by 135 degrees and add to point 0
-						glVertex2f(b0.x0 + step->xoffs, b0.y0 + step->yoffs);
-
-						// rotate the unit vector by -135 degrees and add to point 0
-						glVertex2f(b0.x1 + step->xoffs, b0.y1 + step->yoffs);
-
-						// rotate the unit vector by 45 degrees and add to point 1
-						glVertex2f(b1.x0 + step->xoffs, b1.y0 + step->yoffs);
-
-						// rotate the unit vector by -45 degrees and add to point 1
-						glVertex2f(b1.x1 + step->xoffs, b1.y1 + step->yoffs);
-
-						// determine the color of the line
-						r = (prim.color.r * step->weight);
-						g = (prim.color.g * step->weight);
-						b = (prim.color.b * step->weight);
-						a = (prim.color.a * 255.0f);
-						if (r > 1.0) r = 1.0;
-						if (g > 1.0) g = 1.0;
-						if (b > 1.0) b = 1.0;
-						if (a > 1.0) a = 1.0;
-						glColor4f(r, g, b, a);
-
-//                      texture = texture_update(window, &prim, 0);
-//                      if (texture) printf("line has texture!\n");
-
-						// if we have a texture to use for the vectors, use it here
-						#if 0
-						if (d3d->vector_texture != nullptr)
-						{
-							printf("SDL: textured lines unsupported\n");
-							vertex[0].u0 = d3d->vector_texture->ustart;
-							vertex[0].v0 = d3d->vector_texture->vstart;
-
-							vertex[2].u0 = d3d->vector_texture->ustop;
-							vertex[2].v0 = d3d->vector_texture->vstart;
-
-							vertex[1].u0 = d3d->vector_texture->ustart;
-							vertex[1].v0 = d3d->vector_texture->vstop;
-
-							vertex[3].u0 = d3d->vector_texture->ustop;
-							vertex[3].v0 = d3d->vector_texture->vstop;
-						}
-						#endif
-						glEnd();
+								set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
 					}
-				}
-				#endif
-				break;
 
-			case render_primitive::QUAD:
+					glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
 
-				if(pendingPrimitive!=GL_NO_PRIMITIVE)
-				{
-					glEnd();
-					pendingPrimitive=GL_NO_PRIMITIVE;
-				}
-
-				glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
-
-				set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
-
-				texture = texture_update(&prim, 0);
-
-				if ( texture && texture->type==TEXTURE_TYPE_SHADER )
-				{
-					for(i=0; i<m_glsl_program_num; i++)
+					if(pendingPrimitive!=curPrimitive)
 					{
-						if ( i==m_glsl_program_mb2sc )
-						{
-							// i==glsl_program_mb2sc -> transformation mamebm->scrn
-							m_texVerticex[0]=prim.bounds.x0 + hofs;
-							m_texVerticex[1]=prim.bounds.y0 + vofs;
-							m_texVerticex[2]=prim.bounds.x1 + hofs;
-							m_texVerticex[3]=prim.bounds.y0 + vofs;
-							m_texVerticex[4]=prim.bounds.x1 + hofs;
-							m_texVerticex[5]=prim.bounds.y1 + vofs;
-							m_texVerticex[6]=prim.bounds.x0 + hofs;
-							m_texVerticex[7]=prim.bounds.y1 + vofs;
-						} else {
-							// 1:1 tex coord CCW (0/0) (1/0) (1/1) (0/1) on texture dimensions
-							m_texVerticex[0]=(GLfloat)0.0;
-							m_texVerticex[1]=(GLfloat)0.0;
-							m_texVerticex[2]=(GLfloat)m_width;
-							m_texVerticex[3]=(GLfloat)0.0;
-							m_texVerticex[4]=(GLfloat)m_width;
-							m_texVerticex[5]=(GLfloat)m_height;
-							m_texVerticex[6]=(GLfloat)0.0;
-							m_texVerticex[7]=(GLfloat)m_height;
-						}
+						glLineWidth(prim.width * qwidth);
+						glBegin(curPrimitive);
+						pendingPrimitive=curPrimitive;
+					}
 
-						if(i>0) // first fetch already done
+					// check if it's really a point
+					if (curPrimitive==GL_POINTS)
+					{
+						glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
+					}
+					else
+					{
+						glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
+						glVertex2f(qtx + qsx * (prim.bounds.x1+hofs), qty + qsy * (prim.bounds.y1+vofs));
+					}
+					break;
+
+				case render_primitive::QUAD:
+
+					if(pendingPrimitive!=GL_NO_PRIMITIVE)
+					{
+						glEnd();
+						pendingPrimitive=GL_NO_PRIMITIVE;
+					}
+
+					glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
+
+					set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
+
+					texture = texture_update(&prim, 0);
+
+					if ( texture && texture->type==TEXTURE_TYPE_SHADER )
+					{
+						for(i=0; i<m_glsl_program_num; i++)
 						{
-							texture = texture_update(&prim, i);
+							if ( i==m_glsl_program_mb2sc )
+							{
+								// i==glsl_program_mb2sc -> transformation mamebm->scrn
+								m_texVerticex[0]=qtx + qsx * (prim.bounds.x0 + hofs);
+								m_texVerticex[1]=qty + qsy * (prim.bounds.y0 + vofs);
+								m_texVerticex[2]=qtx + qsx * (prim.bounds.x1 + hofs);
+								m_texVerticex[3]=qty + qsy * (prim.bounds.y0 + vofs);
+								m_texVerticex[4]=qtx + qsx * (prim.bounds.x1 + hofs);
+								m_texVerticex[5]=qty + qsy * (prim.bounds.y1 + vofs);
+								m_texVerticex[6]=qtx + qsx * (prim.bounds.x0 + hofs);
+								m_texVerticex[7]=qty + qsy * (prim.bounds.y1 + vofs);
+							} else {
+								// 1:1 tex coord CCW (0/0) (1/0) (1/1) (0/1) on texture dimensions
+								m_texVerticex[0]=qtx + qsx * ((GLfloat)0.0);
+								m_texVerticex[1]=qty + qsy * ((GLfloat)0.0);
+								m_texVerticex[2]=qtx + qsx * ((GLfloat)m_width);
+								m_texVerticex[3]=qty + qsy * ((GLfloat)0.0);
+								m_texVerticex[4]=qtx + qsx * ((GLfloat)m_width);
+								m_texVerticex[5]=qty + qsy * ((GLfloat)m_height);
+								m_texVerticex[6]=qtx + qsx * ((GLfloat)0.0);
+								m_texVerticex[7]=qty + qsy * ((GLfloat)m_height);
+							}
+
+							if(i>0) // first fetch already done
+							{
+								texture = texture_update(&prim, i);
+							}
+							glDrawArrays(GL_QUADS, 0, 4);
 						}
+					} else {
+						m_texVerticex[0]=qtx + qsx * (prim.bounds.x0 + hofs);
+						m_texVerticex[1]=qty + qsy * (prim.bounds.y0 + vofs);
+						m_texVerticex[2]=qtx + qsx * (prim.bounds.x1 + hofs);
+						m_texVerticex[3]=qty + qsy * (prim.bounds.y0 + vofs);
+						m_texVerticex[4]=qtx + qsx * (prim.bounds.x1 + hofs);
+						m_texVerticex[5]=qty + qsy * (prim.bounds.y1 + vofs);
+						m_texVerticex[6]=qtx + qsx * (prim.bounds.x0 + hofs);
+						m_texVerticex[7]=qty + qsy * (prim.bounds.y1 + vofs);
+
 						glDrawArrays(GL_QUADS, 0, 4);
 					}
-				} else {
-					m_texVerticex[0]=prim.bounds.x0 + hofs;
-					m_texVerticex[1]=prim.bounds.y0 + vofs;
-					m_texVerticex[2]=prim.bounds.x1 + hofs;
-					m_texVerticex[3]=prim.bounds.y0 + vofs;
-					m_texVerticex[4]=prim.bounds.x1 + hofs;
-					m_texVerticex[5]=prim.bounds.y1 + vofs;
-					m_texVerticex[6]=prim.bounds.x0 + hofs;
-					m_texVerticex[7]=prim.bounds.y1 + vofs;
 
-					glDrawArrays(GL_QUADS, 0, 4);
-				}
+					if ( texture )
+					{
+						texture_disable(texture);
+						texture=nullptr;
+					}
+					break;
 
-				if ( texture )
-				{
-					texture_disable(texture);
-					texture=nullptr;
-				}
-				break;
+				default:
+					throw emu_fatalerror("Unexpected render_primitive type");
+			}
+		}
 
-			default:
-				throw emu_fatalerror("Unexpected render_primitive type");
+		shadowbox->draw_whole_quilt_to_screen(m_width, m_height);
+	}
+	else
+	{
+		//////////////////// Normal non-quilt draw
+		// now draw
+		for (render_primitive &prim : *win->m_primlist)
+		{
+			int i;
+
+			switch (prim.type)
+			{
+				/**
+				 * Try to stay in one Begin/End block as long as possible,
+				 * since entering and leaving one is most expensive..
+				 */
+				case render_primitive::LINE:
+					#if !USE_WIN32_STYLE_LINES
+					// check if it's really a point
+					if (((prim.bounds.x1 - prim.bounds.x0) == 0) && ((prim.bounds.y1 - prim.bounds.y0) == 0))
+					{
+						curPrimitive=GL_POINTS;
+					} else {
+						curPrimitive=GL_LINES;
+					}
+
+					if(pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
+					{
+						glEnd();
+						pendingPrimitive=GL_NO_PRIMITIVE;
+					}
+
+							if ( pendingPrimitive==GL_NO_PRIMITIVE )
+					{
+								set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
+					}
+
+					glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
+
+					if(pendingPrimitive!=curPrimitive)
+					{
+						glLineWidth(prim.width);
+						glBegin(curPrimitive);
+						pendingPrimitive=curPrimitive;
+					}
+
+					// check if it's really a point
+					if (curPrimitive==GL_POINTS)
+					{
+						glVertex2f(prim.bounds.x0+hofs, prim.bounds.y0+vofs);
+					}
+					else
+					{
+						glVertex2f(prim.bounds.x0+hofs, prim.bounds.y0+vofs);
+						glVertex2f(prim.bounds.x1+hofs, prim.bounds.y1+vofs);
+					}
+					#else
+					{
+						const line_aa_step *step = line_aa_4step;
+						render_bounds b0, b1;
+						float r, g, b, a;
+						float effwidth;
+
+						// we're not gonna play fancy here.  close anything pending and let's go.
+						if (pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
+						{
+							glEnd();
+							pendingPrimitive=GL_NO_PRIMITIVE;
+						}
+
+						set_blendmode(sdl, PRIMFLAG_GET_BLENDMODE(prim.flags));
+
+						// compute the effective width based on the direction of the line
+						effwidth = prim.width();
+						if (effwidth < 0.5f)
+							effwidth = 0.5f;
+
+						// determine the bounds of a quad to draw this line
+						render_line_to_quad(&prim.bounds, effwidth, 0.0f, &b0, &b1);
+
+						// fix window position
+						b0.x0 += hofs;
+						b0.x1 += hofs;
+						b1.x0 += hofs;
+						b1.x1 += hofs;
+						b0.y0 += vofs;
+						b0.y1 += vofs;
+						b1.y0 += vofs;
+						b1.y1 += vofs;
+
+						// iterate over AA steps
+						for (step = PRIMFLAG_GET_ANTIALIAS(prim.flags) ? line_aa_4step : line_aa_1step; step->weight != 0; step++)
+						{
+							glBegin(GL_TRIANGLE_STRIP);
+
+							// rotate the unit vector by 135 degrees and add to point 0
+							glVertex2f(b0.x0 + step->xoffs, b0.y0 + step->yoffs);
+
+							// rotate the unit vector by -135 degrees and add to point 0
+							glVertex2f(b0.x1 + step->xoffs, b0.y1 + step->yoffs);
+
+							// rotate the unit vector by 45 degrees and add to point 1
+							glVertex2f(b1.x0 + step->xoffs, b1.y0 + step->yoffs);
+
+							// rotate the unit vector by -45 degrees and add to point 1
+							glVertex2f(b1.x1 + step->xoffs, b1.y1 + step->yoffs);
+
+							// determine the color of the line
+							r = (prim.color.r * step->weight);
+							g = (prim.color.g * step->weight);
+							b = (prim.color.b * step->weight);
+							a = (prim.color.a * 255.0f);
+							if (r > 1.0) r = 1.0;
+							if (g > 1.0) g = 1.0;
+							if (b > 1.0) b = 1.0;
+							if (a > 1.0) a = 1.0;
+							glColor4f(r, g, b, a);
+
+	//                      texture = texture_update(window, &prim, 0);
+	//                      if (texture) printf("line has texture!\n");
+
+							// if we have a texture to use for the vectors, use it here
+							#if 0
+							if (d3d->vector_texture != nullptr)
+							{
+								printf("SDL: textured lines unsupported\n");
+								vertex[0].u0 = d3d->vector_texture->ustart;
+								vertex[0].v0 = d3d->vector_texture->vstart;
+
+								vertex[2].u0 = d3d->vector_texture->ustop;
+								vertex[2].v0 = d3d->vector_texture->vstart;
+
+								vertex[1].u0 = d3d->vector_texture->ustart;
+								vertex[1].v0 = d3d->vector_texture->vstop;
+
+								vertex[3].u0 = d3d->vector_texture->ustop;
+								vertex[3].v0 = d3d->vector_texture->vstop;
+							}
+							#endif
+							glEnd();
+						}
+					}
+					#endif
+					break;
+
+				case render_primitive::QUAD:
+
+					if(pendingPrimitive!=GL_NO_PRIMITIVE)
+					{
+						glEnd();
+						pendingPrimitive=GL_NO_PRIMITIVE;
+					}
+
+					glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
+
+					set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
+
+					texture = texture_update(&prim, 0);
+
+					if ( texture && texture->type==TEXTURE_TYPE_SHADER )
+					{
+						for(i=0; i<m_glsl_program_num; i++)
+						{
+							if ( i==m_glsl_program_mb2sc )
+							{
+								// i==glsl_program_mb2sc -> transformation mamebm->scrn
+								m_texVerticex[0]=prim.bounds.x0 + hofs;
+								m_texVerticex[1]=prim.bounds.y0 + vofs;
+								m_texVerticex[2]=prim.bounds.x1 + hofs;
+								m_texVerticex[3]=prim.bounds.y0 + vofs;
+								m_texVerticex[4]=prim.bounds.x1 + hofs;
+								m_texVerticex[5]=prim.bounds.y1 + vofs;
+								m_texVerticex[6]=prim.bounds.x0 + hofs;
+								m_texVerticex[7]=prim.bounds.y1 + vofs;
+							} else {
+								// 1:1 tex coord CCW (0/0) (1/0) (1/1) (0/1) on texture dimensions
+								m_texVerticex[0]=(GLfloat)0.0;
+								m_texVerticex[1]=(GLfloat)0.0;
+								m_texVerticex[2]=(GLfloat)m_width;
+								m_texVerticex[3]=(GLfloat)0.0;
+								m_texVerticex[4]=(GLfloat)m_width;
+								m_texVerticex[5]=(GLfloat)m_height;
+								m_texVerticex[6]=(GLfloat)0.0;
+								m_texVerticex[7]=(GLfloat)m_height;
+							}
+
+							if(i>0) // first fetch already done
+							{
+								texture = texture_update(&prim, i);
+							}
+							glDrawArrays(GL_QUADS, 0, 4);
+						}
+					} else {
+						m_texVerticex[0]=prim.bounds.x0 + hofs;
+						m_texVerticex[1]=prim.bounds.y0 + vofs;
+						m_texVerticex[2]=prim.bounds.x1 + hofs;
+						m_texVerticex[3]=prim.bounds.y0 + vofs;
+						m_texVerticex[4]=prim.bounds.x1 + hofs;
+						m_texVerticex[5]=prim.bounds.y1 + vofs;
+						m_texVerticex[6]=prim.bounds.x0 + hofs;
+						m_texVerticex[7]=prim.bounds.y1 + vofs;
+
+						glDrawArrays(GL_QUADS, 0, 4);
+					}
+
+					if ( texture )
+					{
+						texture_disable(texture);
+						texture=nullptr;
+					}
+					break;
+
+				default:
+					throw emu_fatalerror("Unexpected render_primitive type");
+			}
 		}
 	}
 
@@ -2061,14 +2077,6 @@ int renderer_ogl::draw(const int update)
 
 	win->m_primlist->release_lock();
 	m_init_context = 0;
-
-	if (do_lightfield)
-	{
-		if (!shadowbox)
-			shadowbox = new Shadowbox();
-		shadowbox->test_render_into_quilt(m_width, m_height);
-		shadowbox->draw_whole_quilt_to_screen(m_width, m_height);
-	}
 
 	m_gl_context->SwapBuffer();
 
