@@ -1204,9 +1204,9 @@ else
         // glPixelStorei(GL_UNPACK_SKIP_PIXELS,  0);
         // glPixelStorei(GL_UNPACK_SKIP_IMAGES,  0);
         // glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
-		glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
-        // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
-        //              0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+//		glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 1024, 768, 0,GL_RGB, GL_UNSIGNED_BYTE, 0);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
+                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
 //                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
         // glBindTexture(GL_TEXTURE_2D, 0);
         // glDisable(GL_TEXTURE_2D);
@@ -1229,10 +1229,10 @@ else
 		else
 			printf("->render to texture looks ok!\n");
 
-		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
-		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
-        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+//		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
+//		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
+//        glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+//        glClear(GL_COLOR_BUFFER_BIT);
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	}
@@ -1370,12 +1370,13 @@ else
 		while ((err = glGetError()) != GL_NO_ERROR)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		// Render to our framebuffer
+#if 1
 		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
-		glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
-		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
-		while ((err = glGetError()) != GL_NO_ERROR)
-			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
-		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
+		if (1)
+		{
+			glBindRenderbuffer(GL_RENDERBUFFER, quilt->depthrenderbuffer);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, quilt->depthrenderbuffer);
+		}
 		while ((err = glGetError()) != GL_NO_ERROR)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quilt->tex16_id, 0);
@@ -1394,32 +1395,46 @@ else
 		else
 			printf("->555 render to texture looks ok!\n");
 
-        glClearColor(0.0f, 1.0f, 1.0f, 1.0f);
+		glViewport(0,0,quilt->full_size_x, quilt->full_size_y);
+		glMatrixMode(GL_PROJECTION);
+		glPushMatrix();
+		glLoadIdentity();
+		glOrtho(0.0, (GLdouble) quilt->full_size_x, (GLdouble) quilt->full_size_y, 0.0, 0.0, -1.0);
+		glMatrixMode(GL_MODELVIEW);
+		glPushMatrix();
+		glLoadIdentity();
+		while ((err = glGetError()) != GL_NO_ERROR)
+			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+#endif
+
+        glClearColor(0.0f, 0.25f, 0.25f, 0.0f);
 		while ((err = glGetError()) != GL_NO_ERROR)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
         glClear(GL_COLOR_BUFFER_BIT);
 		while ((err = glGetError()) != GL_NO_ERROR)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-        for (int ty = 0; 0 &&  ty < quilt->num_tiles_y; ++ty)
+		glDisable(GL_TEXTURE_2D);
+//        for (int ty = 0; ty < quilt->num_tiles_y; ++ty)
         {
-            for (int tx = 0; tx < quilt->num_tiles_x; ++tx)
+//            for (int tx = 0; tx < quilt->num_tiles_x; ++tx)
             {
 				while ((err = glGetError()) != GL_NO_ERROR)
 					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glColor4f(1.0, 0.0, 0.0, 1.0);
 				while ((err = glGetError()) != GL_NO_ERROR)
 					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
-				glLineWidth(4.0);
+				glLineWidth(30.0);
 				while ((err = glGetError()) != GL_NO_ERROR)
 					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glBegin(GL_LINES);
 				while ((err = glGetError()) != GL_NO_ERROR)
 					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
-				glVertex2f(10000.0f, 0.0f);
-				glVertex2f(0.0f, 10000.0f);
-				glVertex2f(screen_w/2, 0.0f);
-				glVertex2f(screen_w, screen_h);
+				glVertex3f(0.0f, 0.0f, 0.0f);
+				glVertex3f(1000.0f, 1000.0f, 0.0f);
+//				glVertex2f(screen_w/2, 0.0f);
+//				glVertex2f(screen_w, screen_h);
 				while ((err = glGetError()) != GL_NO_ERROR)
 					printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 				glEnd();
@@ -1432,6 +1447,10 @@ else
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+		glMatrixMode(GL_PROJECTION);
+		glPopMatrix();
+		glMatrixMode(GL_MODELVIEW);
+		glPopMatrix();
 		while ((err = glGetError()) != GL_NO_ERROR)
 			printf(">>>>>>>>>>>>> GL Error %d %x at line %d\n", err, err, __LINE__);
 		glViewport(0,0,screen_w, screen_h);
@@ -1466,13 +1485,14 @@ else
         const float vratio = 200.0 / 240.0;
         const float mono_h = (1.0 * 512) / 640;
         const float mono_v = (vratio * 680) / 400;
+        const float vsc = 0.25f;
 
         static float verts_full[] = {
                               // pos
-                              -1.0f, -1.0f, 0.0f,
-                              1.0, -1.0, 0.0f,
-                              1.0, 1.0, 0.0f,
-                              -1.0, 1.0, 0.0f,
+                              vsc*-1.0f, vsc*-1.0f, 0.0f,
+                              vsc*1.0, vsc*-1.0, 0.0f,
+                              vsc*1.0, vsc*1.0, 0.0f,
+                              vsc*-1.0, vsc*1.0, 0.0f,
                               // u,v,pfar,pnear
                                0.0f, 1.0f, 0, 0,
                                1.0f, 1.0f, 0, 0,
@@ -1583,14 +1603,14 @@ else
 		glDisable(GL_TEXTURE_2D);
 
 		glViewport(0.0, 0.0, screen_w, screen_h);
-		if (0)
+		if (1)
 		{
 			glColor4f(1.0, 1.0, 0.0, 1.0);
 			glLineWidth(4.0);
 			glBegin(GL_LINES);
-			glVertex2f(0.0f, 0.0f);
+			glVertex2f(500.0f, 0.0f);
 			glVertex2f(100.0f, 100.0f);
-			glVertex2f(0.0f, 0.0f);
+			glVertex2f(500.0f, 0.0f);
 			glVertex2f(screen_w, screen_h);
 			glEnd();
 		}
