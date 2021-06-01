@@ -1271,10 +1271,9 @@ public:
 	    printf("Quilt shaders compiled ok.\n");
 	}
 
-    void test_render_into_quilt(float screen_w, float screen_h)
+    void begin_render_into_quilt()
     {
 		// Render to our framebuffer
-    	int err;
 //        glActiveTexture(GL_TEXTURE0);
 //        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
 		glDisable(GL_DEPTH_TEST);
@@ -1302,6 +1301,7 @@ public:
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 		glLoadIdentity();
+		glEnable(GL_BLEND);
 
         glClearColor(0.0f, 0.25f, 0.25f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -1320,6 +1320,11 @@ public:
 				glEnd();
             }
         }
+        
+    }
+    void end_render_into_quilt(float screen_w, float screen_h)
+    {
+    	int err;
         glFinish();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -1718,7 +1723,10 @@ int renderer_ogl::draw(const int update)
 	{
 		if (!shadowbox)
 			shadowbox = new Shadowbox();
-		shadowbox->test_render_into_quilt(m_width, m_height);
+		shadowbox->begin_render_into_quilt();
+        // glClearColor(0.0f, 0.25f, 0.25f, 0.0f);
+        // glClear(GL_COLOR_BUFFER_BIT);
+        // glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 		float qsx = 1.0f;
 		float qsy = 1.0f;
@@ -1728,9 +1736,12 @@ int renderer_ogl::draw(const int update)
 
 		//////////////////// lightfield-quilt draw
 		// now draw
+bool do_game_lines = true;
+if (do_game_lines)
+{
 		for (render_primitive &prim : *win->m_primlist)
 		{
-			int i;
+//			int i;
 
 			switch (prim.type)
 			{
@@ -1778,7 +1789,6 @@ int renderer_ogl::draw(const int update)
 						glVertex2f(qtx + qsx * (prim.bounds.x1+hofs), qty + qsy * (prim.bounds.y1+vofs));
 					}
 					break;
-
 				case render_primitive::QUAD:
 
 					if(pendingPrimitive!=GL_NO_PRIMITIVE)
@@ -1795,7 +1805,7 @@ int renderer_ogl::draw(const int update)
 
 					if ( texture && texture->type==TEXTURE_TYPE_SHADER )
 					{
-						for(i=0; i<m_glsl_program_num; i++)
+						for(int i=0; i<m_glsl_program_num; i++)
 						{
 							if ( i==m_glsl_program_mb2sc )
 							{
@@ -1844,13 +1854,22 @@ int renderer_ogl::draw(const int update)
 						texture_disable(texture);
 						texture=nullptr;
 					}
+
 					break;
 
 				default:
 					throw emu_fatalerror("Unexpected render_primitive type");
 			}
 		}
+		if(pendingPrimitive!=GL_NO_PRIMITIVE)
+		{
+			glEnd();
+			pendingPrimitive=GL_NO_PRIMITIVE;
+		}
 
+}
+
+		shadowbox->end_render_into_quilt(m_width, m_height);
 		shadowbox->draw_whole_quilt_to_screen(m_width, m_height);
 	}
 	else
@@ -2067,12 +2086,11 @@ int renderer_ogl::draw(const int update)
 					throw emu_fatalerror("Unexpected render_primitive type");
 			}
 		}
-	}
-
-	if(pendingPrimitive!=GL_NO_PRIMITIVE)
-	{
-		glEnd();
-		pendingPrimitive=GL_NO_PRIMITIVE;
+		if(pendingPrimitive!=GL_NO_PRIMITIVE)
+		{
+			glEnd();
+			pendingPrimitive=GL_NO_PRIMITIVE;
+		}
 	}
 
 	win->m_primlist->release_lock();
