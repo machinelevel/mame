@@ -1735,17 +1735,19 @@ int renderer_ogl::draw(const int update)
 		float qsy = 1.0f;
 		float qtx = 0.0f;
 		float qty = 0.0f;
-		float qwidth = 10.0f;
+		float qwidth = 1.0f;
 		float qtoffsetx = -100.0f;
 
 		//////////////////// lightfield-quilt draw
 		// now draw
 bool do_game_lines = true;
-bool do_vtx_list = false;
+bool do_vtx_list = true;
 if (do_game_lines)
 {
 		static std::vector<float> vlist;
+		static std::vector<float> clist;
 		vlist.clear();
+		clist.clear();
 		for (render_primitive &prim : *win->m_primlist)
 		{
 //			int i;
@@ -1772,15 +1774,29 @@ if (do_game_lines)
 							if (do_vtx_list)
 							{
 								printf(">> at %d drawing %d...\n", __LINE__, (int)vlist.size());
-						        shadowbox->glEnableVertexAttribArray(0);
-						        shadowbox->glDisableVertexAttribArray(1);
-				                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
-								//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
-								glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-								glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
-								glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+								if (1)
+								{
+									glBegin(pendingPrimitive);
+									for (uint64_t i = 0; i < vlist.size()/2; ++i)
+									{
+										glColor4f(clist[i*4], clist[i*4+1], clist[i*4+2], clist[i*4+3]);
+										glVertex2f(vlist[i*2], vlist[i*2+1]);
+									}
+									glEnd();
+								}
+								else
+								{
+							        shadowbox->glEnableVertexAttribArray(0);
+							        shadowbox->glDisableVertexAttribArray(1);
+					                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+									//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+									glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
+									glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
+									glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+								}
 							}
 							vlist.clear();
+							clist.clear();
 						}
 						if (!do_vtx_list)
 							glEnd();
@@ -1792,7 +1808,9 @@ if (do_game_lines)
 								set_blendmode(PRIMFLAG_GET_BLENDMODE(prim.flags));
 					}
 
-					glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
+					if (!do_vtx_list)
+						glColor4f(prim.color.r, prim.color.g, prim.color.b, prim.color.a);
+
 
 					if(pendingPrimitive!=curPrimitive)
 					{
@@ -1816,6 +1834,10 @@ if (do_game_lines)
 								{
 									vlist.push_back(qtx + qsx * (prim.bounds.x0+hofs));
 									vlist.push_back(qty + qsy * (prim.bounds.y0+vofs));
+									clist.push_back(prim.color.r);
+									clist.push_back(prim.color.g);
+									clist.push_back(prim.color.b);
+									clist.push_back(prim.color.a);
 									if (!do_vtx_list)
 										glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
 								}
@@ -1825,6 +1847,14 @@ if (do_game_lines)
 									vlist.push_back(qty + qsy * (prim.bounds.y0+vofs));
 									vlist.push_back(qtx + qsx * (prim.bounds.x1+hofs));
 									vlist.push_back(qty + qsy * (prim.bounds.y1+vofs));
+									clist.push_back(prim.color.r);
+									clist.push_back(prim.color.g);
+									clist.push_back(prim.color.b);
+									clist.push_back(prim.color.a);
+									clist.push_back(prim.color.r);
+									clist.push_back(prim.color.g);
+									clist.push_back(prim.color.b);
+									clist.push_back(prim.color.a);
 									if (!do_vtx_list)
 									{
 										glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
@@ -1844,15 +1874,29 @@ if (do_game_lines)
 							if (do_vtx_list)
 							{
 								printf(">> at %d drawing %d...\n", __LINE__, (int)vlist.size());
-						        shadowbox->glEnableVertexAttribArray(0);
-						        shadowbox->glDisableVertexAttribArray(1);
-				                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
-								//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
-								glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-								glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
-								glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+								if (1)
+								{
+									glBegin(pendingPrimitive);
+									for (uint64_t i = 0; i < vlist.size()/2; ++i)
+									{
+										glColor4f(clist[i*4], clist[i*4+1], clist[i*4+2], clist[i*4+3]);
+										glVertex2f(vlist[i*2], vlist[i*2+1]);
+									}
+									glEnd();
+								}
+								else
+								{
+							        shadowbox->glEnableVertexAttribArray(0);
+							        shadowbox->glDisableVertexAttribArray(1);
+					                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+									//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+									glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
+									glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
+									glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+								}
 							}
 							vlist.clear();
+							clist.clear();
 						}
 						if (!do_vtx_list)
 							glEnd();
@@ -1936,15 +1980,29 @@ if (do_game_lines)
 				if (do_vtx_list)
 				{
 					printf(">> at %d drawing %d...\n", __LINE__, (int)vlist.size());
-			        shadowbox->glEnableVertexAttribArray(0);
-			        shadowbox->glDisableVertexAttribArray(1);
-	                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
-					//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
-					glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-					glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
-					glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+					if (1)
+					{
+						glBegin(pendingPrimitive);
+						for (uint64_t i = 0; i < vlist.size()/2; ++i)
+						{
+							glColor4f(clist[i*4], clist[i*4+1], clist[i*4+2], clist[i*4+3]);
+							glVertex2f(vlist[i*2], vlist[i*2+1]);
+						}
+						glEnd();
+					}
+					else
+					{
+				        shadowbox->glEnableVertexAttribArray(0);
+				        shadowbox->glDisableVertexAttribArray(1);
+		                shadowbox->glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+						//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+						glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
+						glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
+						glVertexPointer(2, GL_FLOAT, 0, m_texVerticex);
+					}
 				}
 				vlist.clear();
+				clist.clear();
 			}
 			if (!do_vtx_list)
 			    glEnd();
