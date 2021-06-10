@@ -1095,8 +1095,10 @@ public:
 
     GLuint tex16_id;
     GLuint quad_vbo;
+    GLuint line_vbo;
 	GLuint depthrenderbuffer;
     GLuint plain_shader;
+    GLuint line_shader;
     GLuint framebuffer;
 };
 
@@ -1172,6 +1174,7 @@ public:
             glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
             glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glDisableVertexAttribArray");
             glVertexAttribPointer     = (PFNGLVERTEXATTRIBPOINTERPROC)     SDL_GL_GetProcAddress("glVertexAttribPointer");
+            glGetAttribLocation     = (PFNGLGETATTRIBLOCATIONPROC)     SDL_GL_GetProcAddress("glGetAttribLocation");
             glTexStorage2D     = (PFNGLTEXSTORAGE2DPROC)     SDL_GL_GetProcAddress("glTexStorage2D");
 
             glBindFramebuffer     = (PFNGLBINDFRAMEBUFFERPROC)     SDL_GL_GetProcAddress("glBindFramebuffer");
@@ -1218,54 +1221,103 @@ public:
 
 	void compile_quilt_shaders()
 	{
-	    GLuint shader_program = glCreateProgram();
-	    if (shader_program == 0)
-	    {
-	        printf("Error creating shader program\n");
-	        return;
-	    }
-	    const char* vshader = 
-	    "    attribute vec3 vertexIn;    "
-	    "    attribute vec4 uvIn;    "
-	    "    varying vec4 uv_fn;    "
-	    "    void main() {    "
-	    "       uv_fn = uvIn;    "
-	    "       gl_Position = vec4(vertexIn.xyz,1.0);    "
-	    "    }    ";
-	    const char* pshader = 
-	    "    uniform sampler2D tx_color;    "
-	    "    varying vec4 uv_fn;    "
-	    "    void main() {    "
-	    "       vec4 color1 = texture2D(tx_color,uv_fn.xy);    "
-	    "       vec4 color2 = vec4(uv_fn.x, uv_fn.y, 0, 1);    "
-	    "       if (uv_fn.x > 0.0)    "
-	    "         gl_FragColor = vec4(color1.xyz, 1);    "
-	    "       else    "
-  	    "         gl_FragColor = vec4(color2.xyz, 1);    "
-	    "    }    ";
-	    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
-	    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
-	    GLint success = 0;
-	    GLchar error_log[1024] = { 0 };
-	    glLinkProgram(shader_program);
-	    glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
+		if (1)
+		{
+		    GLuint shader_program = glCreateProgram();
+		    if (shader_program == 0)
+		    {
+		        printf("Error creating shader program\n");
+		        return;
+		    }
+		    const char* vshader = 
+		    "    attribute vec3 vertexIn;    "
+		    "    attribute vec4 uvIn;    "
+		    "    varying vec4 uv_fn;    "
+		    "    void main() {    "
+		    "       uv_fn = uvIn;    "
+		    "       gl_Position = vec4(vertexIn.xyz,1.0);    "
+		    "    }    ";
+		    const char* pshader = 
+		    "    uniform sampler2D tx_color;    "
+		    "    varying vec4 uv_fn;    "
+		    "    void main() {    "
+		    "       vec4 color1 = texture2D(tx_color,uv_fn.xy);    "
+		    "       vec4 color2 = vec4(uv_fn.x, uv_fn.y, 0, 1);    "
+		    "       if (uv_fn.x > 0.0)    "
+		    "         gl_FragColor = vec4(color1.xyz, 1);    "
+		    "       else    "
+	  	    "         gl_FragColor = vec4(color2.xyz, 1);    "
+		    "    }    ";
+		    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
+		    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
+		    GLint success = 0;
+		    GLchar error_log[1024] = { 0 };
+		    glLinkProgram(shader_program);
+		    glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
 
-	    if (!success) {
-	        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
-	        printf("Error linking shader program: '%s'\n", error_log);
-	        return;
-	    }
-	    glValidateProgram(shader_program);
-	    glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &success);
+		    if (!success) {
+		        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+		        printf("Error linking shader program: '%s'\n", error_log);
+		        return;
+		    }
+		    glValidateProgram(shader_program);
+		    glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &success);
 
-	    if (!success) {
-	        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
-	        printf("Invalid shader program: '%s'\n", error_log);
-	        return;
-	    }
-	    quilt->plain_shader = shader_program;
+		    if (!success) {
+		        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+		        printf("Invalid shader program: '%s'\n", error_log);
+		        return;
+		    }
+		    quilt->plain_shader = shader_program;
+		}
+
+		if (1)
+		{
+		    GLuint shader_program = glCreateProgram();
+		    if (shader_program == 0)
+		    {
+		        printf("Error creating shader program\n");
+		        return;
+		    }
+		    const char* vshader = 
+		    "    attribute vec2 vertexIn;    "
+		    "    attribute vec4 colorIn;    "
+		    "    varying vec4 line_color;    "
+		    "    void main() {    "
+		    "       line_color = colorIn;    "
+		    "       gl_Position = vec4(vertexIn.xy,0.0,1.0);    "
+		    "    }    ";
+		    const char* pshader = 
+		    "    varying vec4 line_color;    "
+		    "    void main() {    "
+		    "       gl_FragColor = vec4(1, 1, 0, 1);    "
+		    "    }    ";
+		    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
+		    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
+		    GLint success = 0;
+		    GLchar error_log[1024] = { 0 };
+		    glLinkProgram(shader_program);
+		    glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
+
+		    if (!success) {
+		        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+		        printf("Error linking shader program: '%s'\n", error_log);
+		        return;
+		    }
+		    glValidateProgram(shader_program);
+		    glGetProgramiv(shader_program, GL_VALIDATE_STATUS, &success);
+
+		    if (!success) {
+		        glGetProgramInfoLog(shader_program, sizeof(error_log), NULL, error_log);
+		        printf("Invalid shader program: '%s'\n", error_log);
+		        return;
+		    }
+		    quilt->line_shader = shader_program;
+		}
+
 	    glGenTextures(1, &quilt->tex16_id);
 	    glGenBuffers(1, &quilt->quad_vbo);
+	    glGenBuffers(1, &quilt->line_vbo);
 		glGenRenderbuffers(1, &quilt->depthrenderbuffer);
 
 		glGenFramebuffers(1, &quilt->framebuffer);
@@ -1498,35 +1550,112 @@ public:
 		}
     }
 
-    void draw_pending_verts(int pendingPrimitive, bool do_vtx_list, std::vector<float>& vlist, std::vector<float>& clist)
+    void draw_pending_verts(int pendingPrimitive, bool do_vtx_list, std::vector<float>& vlist,
+    						std::vector<float>& clist, std::vector<float>& vclist)
     {
-		if (!vlist.empty())
+		if (!vclist.empty())
 		{
 			if (do_vtx_list)
 			{
-				printf(">> at %d drawing %d...\n", __LINE__, (int)vlist.size());
-				if (1)
+				printf(">> at %d drawing %d...\n", __LINE__, (int)vclist.size());
+				if (0)
 				{
 					glBegin(pendingPrimitive);
-					for (uint64_t i = 0; i < vlist.size()/2; ++i)
+					for (uint64_t i = 0; i < vclist.size()/6; ++i)
 					{
-						glColor4f(clist[i*4], clist[i*4+1], clist[i*4+2], clist[i*4+3]);
-						glVertex2f(vlist[i*2], vlist[i*2+1]);
+						glColor4f(vclist[i*6+2], vclist[i*6+3], vclist[i*6+4], vclist[i*6+5]);
+						glVertex2f(vclist[i*6], vclist[i*6+1]);
 					}
 					glEnd();
 				}
+				else if (1)
+				{
+
+
+
+
+
+
+			        GLint old_program;
+					glDisable(GL_BLEND);
+			        glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
+			//        glClear(GL_COLOR_BUFFER_BIT);
+			        glUseProgram(quilt->line_shader);
+					glDisable(GL_TEXTURE_2D);
+			        glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
+			        glEnableVertexAttribArray(0);
+			        glEnableVertexAttribArray(1);
+if (vclist.size() >= 12)
+{
+	glLineWidth(20);
+	vclist[0] = 0.0;
+	vclist[1] = 0.0;
+	vclist[6] = 1000.0;
+	vclist[7] = 1000.0;
+}
+			        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(0));
+			        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(2 * sizeof(float)));  
+			        glBufferData(GL_ARRAY_BUFFER, vclist.size() * sizeof(float), &vclist[0], GL_STATIC_DRAW);
+			        glDrawArrays(GL_LINES, 0, vclist.size()/6);
+			        glUseProgram(old_program);
+
+
+
+
+
+
+
+
+				}
 				else
 				{
-			        glEnableVertexAttribArray(0);
-			        glDisableVertexAttribArray(1);
-	                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
-					//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+					GLint program = 0;
+					glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+
+//					GLint position_attrib_index = glGetAttribLocation(program, "position"); // program is what is returned by glCreateProgram.
+//					GLint texcoord_attrib_index = glGetAttribLocation(program, "texcoord");
+////					GLint normal_attrib_index = glGetAttribLocation(program, "normal");
+//					GLint color_attrib_index = glGetAttribLocation(program, "color");
+//					glEnableVertexAttribArray(texcoord_attrib_index); // Attribute indexes were received from calls to glGetAttribLocation, or passed into glBindAttribLocation.
+//					glEnableVertexAttribArray(normal_attrib_index);
+//					glEnableVertexAttribArray(color_attrib_index);
+//					glEnableVertexAttribArray(position_attrib_index);
+
+//					glVertexAttribPointer(texcoord_attrib_index, 2, GL_FLOAT, false, 0, texcoords_data); // texcoords_data is a float*, 2 per vertex, representing UV coordinates.
+//					glVertexAttribPointer(normal_attrib_index, 3, GL_FLOAT, false, 0, normals_data); // normals_data is a float*, 3 per vertex, representing normal vectors.
+//					glVertexAttribPointer(color_attrib_index, 3, GL_UNSIGNED_BYTE, true, sizeof(unsigned char)*3, colors_data); // colors_data is a unsigned char*, 3 per vertex, representing the color of each vertex.
+//					glVertexAttribPointer(color_attrib_index, 4, GL_FLOAT, false, 0, &clist[0]); // colors_data is a unsigned char*, 3 per vertex, representing the color of each vertex.
+//					glVertexAttribPointer(position_attrib_index, 2, GL_FLOAT, false, 0, &vlist[0]); // vertex_data is a float*, 3 per vertex, representing the position of each vertex
+
+					glEnableClientState(GL_VERTEX_ARRAY);
+//					glEnableClientState(GL_COLOR_ARRAY);
 					glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-					glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
+//					glColorPointer(4, GL_FLOAT, 0, &clist[0]);
+					glDrawArrays(pendingPrimitive, 0, vlist.size()/2); // vertex_count is an integer containing the number of indices to be rendered
+
+//					glDisableVertexAttribArray(position_attrib_index);
+//					glDisableVertexAttribArray(texcoord_attrib_index);
+//					glDisableVertexAttribArray(normal_attrib_index);
+//					glDisableVertexAttribArray(color_attrib_index);
+
+
+
+
+
+					if (0)
+					{
+				        glEnableVertexAttribArray(0);
+				        glDisableVertexAttribArray(1);
+		                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
+						//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
+						glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
+						glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
+					}
 				}
 			}
 			vlist.clear();
 			clist.clear();
+			vclist.clear();
 		}
     }
 
@@ -1555,6 +1684,7 @@ public:
     PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray ;
     PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray ;
     PFNGLVERTEXATTRIBPOINTERPROC     glVertexAttribPointer     ;
+    PFNGLGETATTRIBLOCATIONPROC     glGetAttribLocation     ;
     PFNGLTEXSTORAGE2DPROC     glTexStorage2D     ;
     PFNGLBINDFRAMEBUFFERPROC     glBindFramebuffer     ;
     PFNGLFRAMEBUFFERTEXTUREPROC     glFramebufferTexture     ;
@@ -1778,8 +1908,10 @@ if (do_game_lines)
 {
 		static std::vector<float> vlist;
 		static std::vector<float> clist;
+		static std::vector<float> vclist;
 		vlist.clear();
 		clist.clear();
+		vclist.clear();
 		for (render_primitive &prim : *win->m_primlist)
 		{
 //			int i;
@@ -1801,7 +1933,7 @@ if (do_game_lines)
 
 					if(pendingPrimitive!=GL_NO_PRIMITIVE && pendingPrimitive!=curPrimitive)
 					{
-						shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist);
+						shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist, vclist);
 						if (!do_vtx_list)
 							glEnd();
 						pendingPrimitive=GL_NO_PRIMITIVE;
@@ -1836,29 +1968,29 @@ if (do_game_lines)
 								// check if it's really a point
 								if (curPrimitive==GL_POINTS)
 								{
-									vlist.push_back(qtx + qsx * (prim.bounds.x0+hofs));
-									vlist.push_back(qty + qsy * (prim.bounds.y0+vofs));
-									clist.push_back(prim.color.r);
-									clist.push_back(prim.color.g);
-									clist.push_back(prim.color.b);
-									clist.push_back(prim.color.a);
+									vclist.push_back(qtx + qsx * (prim.bounds.x0+hofs));
+									vclist.push_back(qty + qsy * (prim.bounds.y0+vofs));
+									vclist.push_back(prim.color.r);
+									vclist.push_back(prim.color.g);
+									vclist.push_back(prim.color.b);
+									vclist.push_back(prim.color.a);
 									if (!do_vtx_list)
 										glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
 								}
 								else
 								{
-									vlist.push_back(qtx + qsx * (prim.bounds.x0+hofs));
-									vlist.push_back(qty + qsy * (prim.bounds.y0+vofs));
-									vlist.push_back(qtx + qsx * (prim.bounds.x1+hofs));
-									vlist.push_back(qty + qsy * (prim.bounds.y1+vofs));
-									clist.push_back(prim.color.r);
-									clist.push_back(prim.color.g);
-									clist.push_back(prim.color.b);
-									clist.push_back(prim.color.a);
-									clist.push_back(prim.color.r);
-									clist.push_back(prim.color.g);
-									clist.push_back(prim.color.b);
-									clist.push_back(prim.color.a);
+									vclist.push_back(qtx + qsx * (prim.bounds.x0+hofs));
+									vclist.push_back(qty + qsy * (prim.bounds.y0+vofs));
+									vclist.push_back(prim.color.r);
+									vclist.push_back(prim.color.g);
+									vclist.push_back(prim.color.b);
+									vclist.push_back(prim.color.a);
+									vclist.push_back(qtx + qsx * (prim.bounds.x1+hofs));
+									vclist.push_back(qty + qsy * (prim.bounds.y1+vofs));
+									vclist.push_back(prim.color.r);
+									vclist.push_back(prim.color.g);
+									vclist.push_back(prim.color.b);
+									vclist.push_back(prim.color.a);
 									if (!do_vtx_list)
 									{
 										glVertex2f(qtx + qsx * (prim.bounds.x0+hofs), qty + qsy * (prim.bounds.y0+vofs));
@@ -1873,7 +2005,7 @@ if (do_game_lines)
 
 					if(pendingPrimitive!=GL_NO_PRIMITIVE)
 					{
-						shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist);
+						shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist, vclist);
 						if (!do_vtx_list)
 							glEnd();
 						pendingPrimitive=GL_NO_PRIMITIVE;
@@ -1953,7 +2085,7 @@ if (do_game_lines)
 		}
 		if(pendingPrimitive!=GL_NO_PRIMITIVE)
 		{
-			shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist);
+			shadowbox->draw_pending_verts(pendingPrimitive, do_vtx_list, vlist, clist, vclist);
 			if (!do_vtx_list)
 			    glEnd();
 			pendingPrimitive=GL_NO_PRIMITIVE;
