@@ -1123,7 +1123,8 @@ public:
 	void setup_quilt()
 	{
         init_gl_extensions();
-		quilt = new Quilt(512, 680, 9, 5);
+//		quilt = new Quilt(512, 680, 9, 5);
+		quilt = new Quilt(512, 680, 1, 1);
         compile_quilt_shaders();
 
 		// Make the texture
@@ -1285,7 +1286,9 @@ public:
 		    "    varying vec4 line_color;    "
 		    "    void main() {    "
 		    "       line_color = colorIn;    "
-		    "       gl_Position = vec4(vertexIn.xy,0.0,1.0);    "
+		    "       vec2 line_scale = vec2(1.0/(512*9),1.0/(512*9));    "
+		    "       vec2 line_offset = vec2(-0.5,-0.5);    "
+		    "       gl_Position = vec4(line_offset+vertexIn.xy*line_scale,0.0,1.0);    "
 		    "    }    ";
 		    const char* pshader = 
 		    "    varying vec4 line_color;    "
@@ -1557,7 +1560,13 @@ public:
 		{
 			if (do_vtx_list)
 			{
-				printf(">> at %d drawing %d...\n", __LINE__, (int)vclist.size());
+				if (0)
+				{
+					if (pendingPrimitive == GL_POINTS)
+						printf(">> at %d drawing %f POINTS...\n", __LINE__, (float)vclist.size() / 6);
+					if (pendingPrimitive == GL_LINES)
+						printf(">> at %d drawing %f LINES...\n", __LINE__, (float)vclist.size() / 12);
+				}
 				if (0)
 				{
 					glBegin(pendingPrimitive);
@@ -1585,18 +1594,18 @@ public:
 			        glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
 			        glEnableVertexAttribArray(0);
 			        glEnableVertexAttribArray(1);
-if (vclist.size() >= 12)
+if (0 && vclist.size() >= 12)
 {
 	glLineWidth(20);
 	vclist[0] = 0.0;
 	vclist[1] = 0.0;
-	vclist[6] = 1000.0;
-	vclist[7] = 1000.0;
+	vclist[6] = 0.5;
+	vclist[7] = 0.5;
 }
 			        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(0));
-			        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(2 * sizeof(float)));  
+			        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(2 * sizeof(float)));
 			        glBufferData(GL_ARRAY_BUFFER, vclist.size() * sizeof(float), &vclist[0], GL_STATIC_DRAW);
-			        glDrawArrays(GL_LINES, 0, vclist.size()/6);
+			        glDrawArrays(pendingPrimitive, 0, vclist.size()/6);
 			        glUseProgram(old_program);
 
 
@@ -1962,7 +1971,7 @@ if (do_game_lines)
 				        {
 				        	qty = ty * shadowbox->quilt->tile_size_y;
 				            for (int tx = 0; tx < shadowbox->quilt->num_tiles_x; ++tx)
-	//			        	int tx = 0;
+//				        	int tx = 0;
 				            {
 					        	qtx = qtoffsetx + tx * shadowbox->quilt->tile_size_x;
 								// check if it's really a point
