@@ -1026,7 +1026,7 @@ void renderer_ogl::loadGLExtensions()
 //////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////
 // ej lightfield experiments
-
+#include <chrono>
 bool do_lightfield = true;
 enum {
     SHADOWBOX_MODE_OFF,
@@ -1113,6 +1113,7 @@ public:
         view_angle_min = -5.0f;
         view_angle_max = 5.0f;
         view_angle = 0.0f;
+        last_time = std::chrono::steady_clock::now();
 		setup_quilt();
 	}
 	~Shadowbox()
@@ -1124,7 +1125,7 @@ public:
 	{
         init_gl_extensions();
 //		quilt = new Quilt(512, 680, 9, 5);
-		quilt = new Quilt(512, 680, 1, 1);
+		quilt = new Quilt(512, 680, 2, 1);
         compile_quilt_shaders();
 
 		// Make the texture
@@ -1171,6 +1172,7 @@ public:
             glGenBuffers        = (PFNGLGENBUFFERSPROC)       SDL_GL_GetProcAddress("glGenBuffers");
             glBufferData        = (PFNGLBUFFERDATAPROC)       SDL_GL_GetProcAddress("glBufferData");
             glUniform1i         = (PFNGLUNIFORM1IPROC)        SDL_GL_GetProcAddress("glUniform1i");
+            glUniform4f         = (PFNGLUNIFORM4FPROC)        SDL_GL_GetProcAddress("glUniform4f");
             glGetUniformLocation      = (PFNGLGETUNIFORMLOCATIONPROC)      SDL_GL_GetProcAddress("glGetUniformLocation");
             glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
             glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glDisableVertexAttribArray");
@@ -1283,17 +1285,26 @@ public:
 		    const char* vshader = 
 		    "    attribute vec3 vertexIn;    "
 		    "    attribute vec4 colorIn;    "
+			"    uniform vec4 test_scale1;    "
+			"    uniform vec4 test_scale2;    "
 		    "    varying vec4 line_color;    "
 		    "    void main() {    "
 		    "       line_color = colorIn;    "
-		    "       vec3 line_scale = vec3(1.0/(512.0*9.0), 1.0/(512.0*9.0), 1.0);    "
-		    "       vec3 line_offset = vec3(-0.5, -0.5, 0.0);    "
+		    "       float tx = test_scale1.x; "
+		    "       float ty = test_scale1.y; "
+		    "       float tsx = test_scale2.x; "
+		    "       float tsy = test_scale2.y; "
+		    "       float tox = test_scale2.z; "
+		    "       float toy = test_scale2.w; "
+		    "       vec3 line_scale = vec3(tsx, tsy, 1.0);    "
+		    "       vec3 line_offset = vec3(-1.0 + tx*tox, -1.0 + ty*toy, 0.0);    "
 		    "       gl_Position = vec4(line_offset+vertexIn.xyz*line_scale,1.0);    "
 		    "    }    ";
 		    const char* pshader = 
 		    "    varying vec4 line_color;    "
 		    "    void main() {    "
-		    "       gl_FragColor = vec4(1, 1, 0, 1);    "
+		    "       gl_FragColor = line_color;    "
+//		    "       gl_FragColor = vec4(1, 1, 0, 1);    "
 		    "    }    ";
 		    add_shader(shader_program, vshader, GL_VERTEX_SHADER);
 		    add_shader(shader_program, pshader, GL_FRAGMENT_SHADER);
@@ -1683,20 +1694,49 @@ if (0 && vclist.size() >= 12)
 		glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
 		glEnableVertexAttribArray(0);
 		glEnableVertexAttribArray(1);
-
-if (0 && line_list.size() >= 8)
-{
-	glLineWidth(20);
-	line_list[0] = 0.0;
-	line_list[1] = 0.0;
-	line_list[4] = 0.5;
-	line_list[5] = 0.5;
-}
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void*)(0));
         glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 4 * sizeof(float), (const void*)(3 * sizeof(float)));
         glBufferData(GL_ARRAY_BUFFER, line_list.size() * sizeof(float), &line_list[0], GL_STATIC_DRAW);
-        glDrawArrays(GL_LINES, 0, line_list.size()/4);
+
+        uint32_t tcols = quilt->num_tiles_x;
+        uint32_t trows = quilt->num_tiles_y;
+        float tscalex = 2.0 / (screen_w * tcols);
+        float tscaley = 2.0 / (screen_h * trows);
+        float toffx = 2.0 / (tcols);
+        float toffy = 2.0 / (trows);
+
+        std::chrono::time_point<std::chrono::steady_clock> tic = std::chrono::steady_clock::now();
+
+        int test_scale1_loc = glGetUniformLocation(quilt->line_shader, "test_scale1");
+        int test_scale2_loc = glGetUniformLocation(quilt->line_shader, "test_scale2");
+        for (uint32_t trow = 0; trow < trows; ++trow)
+        {
+	        for (uint32_t tcol = 0; tcol < tcols; ++tcol)
+	        {
+		        glUniform4f(test_scale1_loc, tcol, trow, 0.0, 0.0);
+		        glUniform4f(test_scale2_loc, tscalex, tscaley, toffx, toffy);
+		        glDrawArrays(GL_LINES, 0, line_list.size()/4);
+	        }
+        }
+        glFinish();
+
+        std::chrono::time_point<std::chrono::steady_clock> toc = std::chrono::steady_clock::now();
+        float tdraw_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic).count();
+        float tframe_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - last_time).count();
+        printf("timers: draw: %fms (%fhz) frame: %fms (%fhz) (%d lines each, %d lines total)\n",
+        	tdraw_ms, 1000.0f / tdraw_ms, tframe_ms, 1000.0f / tframe_ms, line_list.size()/4, trows * tcols * line_list.size()/4);
+        last_time = toc;
+
+
+        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 0.0, 0.0, 0.5, 0.0);
+        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 1.0, 0.0, 1.0, 0.0);
+        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+
         glUseProgram(old_program);
+		line_list.clear();
+		quad_list.clear();
+		point_list.clear();
     }
 
     void push_prim(render_primitive &prim, float hofs, float vofs, ogl_texture_info *texture)
@@ -1735,9 +1775,9 @@ if (0 && line_list.size() >= 8)
 		}
 		else if (draw_prim == GL_POINTS)
 		{
-			uint32_t index = line_list.size();
-			line_list.resize(index + 1*4);
-			float*   fdst = (float*)(&line_list[0] + index);
+			uint32_t index = point_list.size();
+			point_list.resize(index + 1*4);
+			float*   fdst = (float*)(&point_list[0] + index);
 			uint8_t* cdst = (uint8_t*)(fdst + 3);
 
 			fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
@@ -1745,9 +1785,9 @@ if (0 && line_list.size() >= 8)
 		}
 		else if (draw_prim == GL_QUADS)
 		{
-			uint32_t index = line_list.size();
-			line_list.resize(index + 4*4);
-			float*   fdst = (float*)(&line_list[0] + index);
+			uint32_t index = quad_list.size();
+			quad_list.resize(index + 4*4);
+			float*   fdst = (float*)(&quad_list[0] + index);
 			uint8_t* cdst = (uint8_t*)(fdst + 3);
 
 			fdst[0+0]  = x0; fdst[0+1]  = y0; fdst[0+2]  = z0;
@@ -1769,6 +1809,7 @@ if (0 && line_list.size() >= 8)
 	std::vector<float> line_list;
 	std::vector<float> quad_list;
 	std::vector<float> point_list;
+	std::chrono::time_point<std::chrono::steady_clock> last_time;
     PFNGLUSEPROGRAMPROC        glUseProgram       ;
     PFNGLCREATESHADERPROC      glCreateShader     ;
     PFNGLSHADERSOURCEPROC      glShaderSource     ;
@@ -1785,6 +1826,7 @@ if (0 && line_list.size() >= 8)
     PFNGLGENBUFFERSPROC        glGenBuffers       ;
     PFNGLBUFFERDATAPROC        glBufferData       ;
     PFNGLUNIFORM1IPROC         glUniform1i        ;
+    PFNGLUNIFORM4FPROC         glUniform4f        ;
     PFNGLGETUNIFORMLOCATIONPROC      glGetUniformLocation      ;
     PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray ;
     PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray ;
