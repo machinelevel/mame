@@ -1028,6 +1028,7 @@ void renderer_ogl::loadGLExtensions()
 // ej lightfield experiments
 #include <chrono>
 bool do_lightfield = true;
+bool do_lightfield_cpu = true;	// Use the CPU to render
 enum {
     SHADOWBOX_MODE_OFF,
     SHADOWBOX_MODE_BASIC_QUILT_MONO,
@@ -1047,6 +1048,23 @@ public:
         num_tiles = num_tiles_x * num_tiles_y;
         full_size_x = tile_size_x * num_tiles_x;
         full_size_y = tile_size_y * num_tiles_y;
+
+        tex16_row_bytes = full_size_x * sizeof(uint16_t);
+        tex16_row_64s = tex16_row_bytes / sizeof(uint64_t);
+        tex16_pixels.resize(tex16_row_64s * full_size_y);
+        tex16_tile_address.resize(num_tiles);
+
+        for (int ty = 0; ty < num_tiles_y; ++ty)
+        {
+            for (int tx = 0; tx < num_tiles_x; ++tx)
+            {
+                int ti = tx + ty * num_tiles_x;
+                tex16_tile_address[ti] = ((uint16_t*)&tex16_pixels[0]) +
+                                         tx * tile_size_x +
+                                         ty * tile_size_y * num_tiles_x * tile_size_x;
+            }
+        }
+
         printf(">> Quilt tile_size:%dx%d, num_tiles:%dx%d, total:%dx%d (%dMB)\n",
                tile_size_x, tile_size_y, num_tiles_x, num_tiles_y,
                full_size_x, full_size_y, (int)((2 * full_size_x * full_size_y) / 1048576));
@@ -1055,35 +1073,35 @@ public:
     {
     }
 
-//     void make_test_pattern()
-//     {
-//         const int num_colors = 8;
-//         uint64_t color64s[num_colors] = {
-//             0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
-//             0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
-//         };
-//         for (uint32_t ti = 0; ti < num_tiles; ++ti)
-//         {
-//             uint32_t tx = ti % num_tiles_x;
-//             uint32_t ty = ti / num_tiles_x;
-//             uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
-//             uint64_t color = color64s[(tx + 3*ty) % num_colors];
-// //            color = 0;
-//             int tile_x_64s = tex16_row_64s / num_tiles_x;
-//             for (int y = 0; y < tile_size_y; ++y)
-//             {
-//                 for (int x = 0; x < tile_x_64s; ++x)
-//                     dst_row[x] = color;
-//                 dst_row += tex16_row_64s;
-//             }
-//         }
-//         if (0) // Fill full buffer
-//         {
-// 	        uint64_t num64s = tex16_row_64s * full_size_y;
-// 	        for (uint64_t i = 0; i < num64s; ++i)
-// 	            ((uint64_t*)&tex16_pixels[0])[i] = 0xf0fff0ffff0fff0fLL;
-// 	    }
-//     }
+    void make_test_pattern()
+    {
+        const int num_colors = 8;
+        uint64_t color64s[num_colors] = {
+            0xffffffffffffffffLL,0xfff0fff0fff0fff0LL,0x0fff0fff0fff0fffLL,0xf0fff0fff0fff0ffLL,
+            0xf000f000f000f000LL,0x0f000f000f000f00LL,0x00f000f000f000f0LL,0x001f001f001f001fLL,
+        };
+        for (uint32_t ti = 0; ti < num_tiles; ++ti)
+        {
+            uint32_t tx = ti % num_tiles_x;
+            uint32_t ty = ti / num_tiles_x;
+            uint64_t* dst_row = (uint64_t*)tex16_tile_address[ti];
+            uint64_t color = color64s[(tx + 3*ty) % num_colors];
+//            color = 0;
+            int tile_x_64s = tex16_row_64s / num_tiles_x;
+            for (int y = 0; y < tile_size_y; ++y)
+            {
+                for (int x = 0; x < tile_x_64s; ++x)
+                    dst_row[x] = color;
+                dst_row += tex16_row_64s;
+            }
+        }
+        if (0) // Fill full buffer
+        {
+	        uint64_t num64s = tex16_row_64s * full_size_y;
+	        for (uint64_t i = 0; i < num64s; ++i)
+	            ((uint64_t*)&tex16_pixels[0])[i] = 0xf0fff0ffff0fff0fLL;
+	    }
+    }
 
 
 //protected:
@@ -1092,6 +1110,11 @@ public:
     int full_size_x, full_size_y;
     uint32_t num_tiles;
     std::vector<int16_t>   tile_parallax_table;
+
+    std::vector<uint64_t>  tex16_pixels;
+    std::vector<uint16_t*> tex16_tile_address;
+    int tex16_row_bytes;
+    int tex16_row_64s;
 
     GLuint tex16_id;
     GLuint quad_vbo;
@@ -1131,8 +1154,9 @@ public:
 		// Make the texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
+        quilt->make_test_pattern();
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
-                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, 0);
+                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (void*)&quilt->tex16_pixels[0]);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
@@ -1346,6 +1370,14 @@ public:
 		line_list.clear();
 		quad_list.clear();
 		point_list.clear();
+
+		if (do_lightfield_cpu)
+		{
+			// Clear it
+			memset(&quilt->tex16_pixels[0], 0, quilt->tex16_row_bytes * quilt->full_size_y);
+			return;
+		}
+
 		glDisable(GL_DEPTH_TEST);
 		glBindFramebuffer(GL_FRAMEBUFFER, quilt->framebuffer);
 		if (0)
@@ -1395,6 +1427,8 @@ public:
     }
     void end_render_into_quilt(float screen_w, float screen_h)
     {
+    	if (do_lightfield_cpu)
+    		return;
     	int err;
         glFinish();
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1427,6 +1461,11 @@ public:
         // glPixelStorei(GL_UNPACK_ALIGNMENT,    4);
         // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
         //              0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, &quilt->tex16_pixels[0]);
+        if (do_lightfield_cpu)
+        {
+	        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB565, quilt->full_size_x, quilt->full_size_y,
+	                     0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, (void*)&quilt->tex16_pixels[0]);
+	    }
         glUniform1i(glGetUniformLocation(quilt->plain_shader, "tx_color"), 0);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1567,137 +1606,251 @@ public:
 		}
     }
 
-    void draw_pending_verts(int pendingPrimitive, bool do_vtx_list, std::vector<float>& vlist,
-    						std::vector<float>& clist, std::vector<float>& vclist)
-    {
-		if (!vclist.empty())
+	inline void bresenham_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
+	{
+		int32_t xmax = quilt->tile_size_x;
+		int32_t ymax = quilt->tile_size_y;
+    	uint32_t full_size_x = quilt->full_size_x;
+    	uint32_t full_size_y = quilt->full_size_y;
+
+    	uint16_t* screen_pixels = (uint16_t*)&quilt->tex16_pixels[0];
+
+		if (x0 == x1)
 		{
-			if (do_vtx_list)
+			// vetical lines are pretty common
+			if (x0 < 0 || x0 >= xmax)
+				return;
+			if (y0 > y1)
 			{
-				if (0)
+				int32_t yt = y0;
+				y0 = y1;
+				y1 = yt;
+			}
+			if (y0 < 0)
+				y0 = 0;
+			if (y1 >= ymax)
+				y1 = ymax;
+			uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
+			for (int32_t y = y0; y < y1; ++y)
+			{
+				*p0 = color;
+				p0 += full_size_x;
+			}
+			return;
+		}
+		if (y0 == y1)
+		{
+			// horizontal lines are pretty common
+			if (y0 < 0 || y0 >= ymax)
+				return;
+			if (x0 > x1)
+			{
+				int32_t xt = x0;
+				x0 = x1;
+				x1 = xt;
+			}
+			if (x0 < 0)
+				x0 = 0;
+			if (x1 >= xmax)
+				x1 = xmax;
+			uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
+			for (int32_t x = x0; x < x1; ++x)
+				*p0++ = color;
+		}
+
+		// all diagonal lined draw left-to-right
+		if (x0 > x1)
+		{
+			int32_t xt = x0;
+			int32_t yt = y0;
+			x0 = x1;
+			y0 = y1;
+			x1 = xt;
+			y1 = yt;
+		}
+
+    	const uint16_t* screen_pixels_end = screen_pixels + full_size_x * full_size_y;
+		uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
+		// TODO: Clipping if needed
+		if (p0 < screen_pixels || p0 >= screen_pixels_end)
+			return;
+		if (y1 > y0)
+		{
+			// diagonal down
+			int32_t dx = x1 - x0;
+			int32_t dy = y1 - y0;
+			int32_t x = x0;
+			int32_t y = y0;
+
+			if (dx >= dy)
+			{
+				int32_t p = 2 * dy - dx;
+				while (x < x1)
 				{
-					if (pendingPrimitive == GL_POINTS)
-						printf(">> at %d drawing %f POINTS...\n", __LINE__, (float)vclist.size() / 6);
-					if (pendingPrimitive == GL_LINES)
-						printf(">> at %d drawing %f LINES...\n", __LINE__, (float)vclist.size() / 12);
-				}
-				if (0)
-				{
-					glBegin(pendingPrimitive);
-					for (uint64_t i = 0; i < vclist.size()/6; ++i)
+					if (p0 >= screen_pixels && p0 < screen_pixels_end)
+						*p0 = color;
+					if (p >= 0)
 					{
-						glColor4f(vclist[i*6+2], vclist[i*6+3], vclist[i*6+4], vclist[i*6+5]);
-						glVertex2f(vclist[i*6], vclist[i*6+1]);
+						y++;
+						p0 += full_size_x;
+						p -= 2 * dx;
 					}
-					glEnd();
-				}
-				else if (1)
-				{
-
-
-
-
-
-
-			        GLint old_program;
-					glDisable(GL_BLEND);
-			        glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
-			//        glClear(GL_COLOR_BUFFER_BIT);
-			        glUseProgram(quilt->line_shader);
-					glDisable(GL_TEXTURE_2D);
-			        glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
-			        glEnableVertexAttribArray(0);
-			        glEnableVertexAttribArray(1);
-if (0 && vclist.size() >= 12)
-{
-	glLineWidth(20);
-	vclist[0] = 0.0;
-	vclist[1] = 0.0;
-	vclist[6] = 0.5;
-	vclist[7] = 0.5;
-}
-			        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(0));
-			        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (const void*)(2 * sizeof(float)));
-			        glBufferData(GL_ARRAY_BUFFER, vclist.size() * sizeof(float), &vclist[0], GL_STATIC_DRAW);
-			        glDrawArrays(pendingPrimitive, 0, vclist.size()/6);
-			        glUseProgram(old_program);
-
-
-
-
-
-
-
-
-				}
-				else
-				{
-					GLint program = 0;
-					glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-
-//					GLint position_attrib_index = glGetAttribLocation(program, "position"); // program is what is returned by glCreateProgram.
-//					GLint texcoord_attrib_index = glGetAttribLocation(program, "texcoord");
-////					GLint normal_attrib_index = glGetAttribLocation(program, "normal");
-//					GLint color_attrib_index = glGetAttribLocation(program, "color");
-//					glEnableVertexAttribArray(texcoord_attrib_index); // Attribute indexes were received from calls to glGetAttribLocation, or passed into glBindAttribLocation.
-//					glEnableVertexAttribArray(normal_attrib_index);
-//					glEnableVertexAttribArray(color_attrib_index);
-//					glEnableVertexAttribArray(position_attrib_index);
-
-//					glVertexAttribPointer(texcoord_attrib_index, 2, GL_FLOAT, false, 0, texcoords_data); // texcoords_data is a float*, 2 per vertex, representing UV coordinates.
-//					glVertexAttribPointer(normal_attrib_index, 3, GL_FLOAT, false, 0, normals_data); // normals_data is a float*, 3 per vertex, representing normal vectors.
-//					glVertexAttribPointer(color_attrib_index, 3, GL_UNSIGNED_BYTE, true, sizeof(unsigned char)*3, colors_data); // colors_data is a unsigned char*, 3 per vertex, representing the color of each vertex.
-//					glVertexAttribPointer(color_attrib_index, 4, GL_FLOAT, false, 0, &clist[0]); // colors_data is a unsigned char*, 3 per vertex, representing the color of each vertex.
-//					glVertexAttribPointer(position_attrib_index, 2, GL_FLOAT, false, 0, &vlist[0]); // vertex_data is a float*, 3 per vertex, representing the position of each vertex
-
-					glEnableClientState(GL_VERTEX_ARRAY);
-//					glEnableClientState(GL_COLOR_ARRAY);
-					glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-//					glColorPointer(4, GL_FLOAT, 0, &clist[0]);
-					glDrawArrays(pendingPrimitive, 0, vlist.size()/2); // vertex_count is an integer containing the number of indices to be rendered
-
-//					glDisableVertexAttribArray(position_attrib_index);
-//					glDisableVertexAttribArray(texcoord_attrib_index);
-//					glDisableVertexAttribArray(normal_attrib_index);
-//					glDisableVertexAttribArray(color_attrib_index);
-
-
-
-
-
-					if (0)
-					{
-				        glEnableVertexAttribArray(0);
-				        glDisableVertexAttribArray(1);
-		                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (const void*)(0));
-						//glBufferData(GL_ARRAY_BUFFER, sizeof(verts_stereo), verts_stereo, GL_STATIC_DRAW);
-						glVertexPointer(2, GL_FLOAT, 0, &vlist[0]);
-						glDrawArrays(pendingPrimitive, 0, vlist.size()>>1);
-					}
+					p += 2 * dy;
+					x++;
+					p0++;
 				}
 			}
-			vlist.clear();
-			clist.clear();
-			vclist.clear();
+			else
+			{
+				int32_t p = 2 * dx - dy;
+				while (y < y1)
+				{
+					if (p0 >= screen_pixels && p0 < screen_pixels_end)
+						*p0 = color;
+					if (p >= 0)
+					{
+						x++;
+						p0++;
+						p -= 2 * dy;
+					}
+					p += 2 * dx;
+					y++;
+					p0 += full_size_x;
+				}
+			}
 		}
+		else
+		{
+			// diagonal up
+			int32_t dx = x1 - x0;
+			int32_t dy = y0 - y1;
+			int32_t x = x0;
+			int32_t y = y1;
+
+			if (dx >= dy)
+			{
+				int32_t p = 2 * dy - dx;
+				while (x < x1)
+				{
+					if (p0 >= screen_pixels && p0 < screen_pixels_end)
+						*p0 = color;
+					if (p >= 0)
+					{
+						y++;
+						p0 -= full_size_x;
+						p -= 2 * dx;
+					}
+					p += 2 * dy;
+					x++;
+					p0++;
+				}
+			}
+			else
+			{
+				int32_t p = 2 * dx - dy;
+				while (y < y0)
+				{
+					if (p0 >= screen_pixels && p0 < screen_pixels_end)
+						*p0 = color;
+					if (p >= 0)
+					{
+						x++;
+						p0++;
+						p -= 2 * dy;
+					}
+					p += 2 * dx;
+					y++;
+					p0 -= full_size_x;
+				}
+			}
+		}
+	}
+
+    void render_lightfield_lines()
+    {
+    	if (0)
+    	{
+    		uint16_t color = 0xffff;
+    		// test slashes
+    		bresenham_line(0, 0, 512, 512, color);
+    		bresenham_line(0, 0, 512, 256, color);
+    		bresenham_line(0, 0, 512-1,680-1, color);
+    		bresenham_line(512, 0, 0, 512, color);
+    		bresenham_line(512, 0, 0, 256, color);
+    		bresenham_line(512-1, 0, 0, 680-1, color);
+    		bresenham_line(0, 512, 512, 512, color);
+    		bresenham_line(0, 256, 512, 256, color);
+
+    		// box
+    		bresenham_line(0,     0,     512-1, 0,     color);
+    		bresenham_line(0,     680-1, 512-1, 680-1, color);
+    		bresenham_line(0,     0,     0,     680-1, color);
+    		bresenham_line(512-1, 0,     512-1, 680-1, color);
+    	}
+
+    	// When more line speed is needed:
+    	// 1. store each vert in u64 as s16,s16,s16,color
+    	// 2. store as x1,dx,y1,dy
+    	// 2. separate clip vs no-clip
+    	// 3. sort u64s then neon parallel
+    	// 4. index colors
+    	// 5. multithread, and multithread clear as well
+
+    	uint32_t num_lines = line_list.size() / 8;
+    	// uint16_t* screen_pixels = (uint16_t*)&quilt->tex16_pixels[0];
+    	// uint32_t full_size_x = quilt->full_size_x;
+    	// uint32_t full_size_y = quilt->full_size_y;
+    	// const uint16_t* screen_pixels_end = screen_pixels + full_size_x + full_size_y;
+    	const float* flist = (const float*)&line_list[0];
+    	const uint32_t* clist = (const uint32_t*)&line_list[0];
+    	static int32_t xmin = 100000, ymin = 100000;
+    	static int32_t xmax = -100000, ymax = -100000;
+    	const int xadjust = 256; // that's (1024-512)/2
+    	const int yadjust = 44; // that's (768-680)/2
+    	for (uint32_t line_index = 0; line_index < num_lines; ++line_index)
+    	{
+    		uint16_t color = clist[3];
+    		int32_t x0 = flist[0] - xadjust;
+    		int32_t y0 = flist[1] - yadjust;
+    		int32_t x1 = flist[4] - xadjust;
+    		int32_t y1 = flist[5] - yadjust;
+    		bresenham_line(x0, y0, x1, y1, color);
+    		// uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
+    		// uint16_t* p1 = screen_pixels + x1 + y1 * full_size_x;
+    		// if (p0 >= screen_pixels && p0 < screen_pixels_end)
+    		// 	*p0 = color;
+    		// if (p1 >= screen_pixels && p1 < screen_pixels_end)
+    		// 	*p1 = color;
+    		flist += 8;
+    		clist += 8;
+
+    		if (xmin > x0) xmin = x0;
+    		if (xmax < x0) xmax = x0;
+    		if (ymin > y0) ymin = y0;
+    		if (ymax < y0) ymax = y0;
+    	}
+    	printf("x -> %d:%d   y -> %d:%d\n", xmin, xmax, ymin, ymax);
     }
 
     void render_pending_shapes(float screen_w, float screen_h)
     {
+    	printf("screen bounds -> %d:%d \n", (int)screen_w, (int)screen_h);
 		GLint old_program;
-		glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
-		glUseProgram(quilt->line_shader);
+        if (!do_lightfield_cpu)
+        {
+			glGetIntegerv(GL_CURRENT_PROGRAM, &old_program);
+			glUseProgram(quilt->line_shader);
 
-		glLineWidth(1);
-		glDisable(GL_BLEND);
-		glDisable(GL_TEXTURE_2D);
-		glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
-		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void*)(0));
-        glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 4 * sizeof(float), (const void*)(3 * sizeof(float)));
-        glBufferData(GL_ARRAY_BUFFER, line_list.size() * sizeof(float), &line_list[0], GL_STATIC_DRAW);
-
+			glLineWidth(1);
+			glDisable(GL_BLEND);
+			glDisable(GL_TEXTURE_2D);
+			glBindBuffer(GL_ARRAY_BUFFER, quilt->line_vbo);
+			glEnableVertexAttribArray(0);
+			glEnableVertexAttribArray(1);
+	        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void*)(0));
+	        glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 4 * sizeof(float), (const void*)(3 * sizeof(float)));
+	        glBufferData(GL_ARRAY_BUFFER, line_list.size() * sizeof(float), &line_list[0], GL_STATIC_DRAW);
+	    }
         uint32_t tcols = quilt->num_tiles_x;
         uint32_t trows = quilt->num_tiles_y;
         float tscalex = 2.0 / (screen_w * tcols);
@@ -1707,18 +1860,25 @@ if (0 && vclist.size() >= 12)
 
         std::chrono::time_point<std::chrono::steady_clock> tic = std::chrono::steady_clock::now();
 
-        int test_scale1_loc = glGetUniformLocation(quilt->line_shader, "test_scale1");
-        int test_scale2_loc = glGetUniformLocation(quilt->line_shader, "test_scale2");
-        for (uint32_t trow = 0; trow < trows; ++trow)
+        if (do_lightfield_cpu)
         {
-	        for (uint32_t tcol = 0; tcol < tcols; ++tcol)
-	        {
-		        glUniform4f(test_scale1_loc, tcol, trow, 0.0, 0.0);
-		        glUniform4f(test_scale2_loc, tscalex, tscaley, toffx, toffy);
-		        glDrawArrays(GL_LINES, 0, line_list.size()/4);
-	        }
+			render_lightfield_lines();
         }
-        glFinish();
+        else
+        {
+	        int test_scale1_loc = glGetUniformLocation(quilt->line_shader, "test_scale1");
+	        int test_scale2_loc = glGetUniformLocation(quilt->line_shader, "test_scale2");
+	        for (uint32_t trow = 0; trow < trows; ++trow)
+	        {
+		        for (uint32_t tcol = 0; tcol < tcols; ++tcol)
+		        {
+			        glUniform4f(test_scale1_loc, tcol, trow, 0.0, 0.0);
+			        glUniform4f(test_scale2_loc, tscalex, tscaley, toffx, toffy);
+			        glDrawArrays(GL_LINES, 0, line_list.size()/4);
+		        }
+	        }
+	        glFinish();
+	    }
 
         std::chrono::time_point<std::chrono::steady_clock> toc = std::chrono::steady_clock::now();
         float tdraw_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic).count();
@@ -1728,12 +1888,15 @@ if (0 && vclist.size() >= 12)
         last_time = toc;
 
 
-        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 0.0, 0.0, 0.5, 0.0);
-        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
-        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 1.0, 0.0, 1.0, 0.0);
-        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+        if (!do_lightfield_cpu)
+        {
+	        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 0.0, 0.0, 0.5, 0.0);
+	        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+	        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 1.0, 0.0, 1.0, 0.0);
+	        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
 
-        glUseProgram(old_program);
+	        glUseProgram(old_program);
+	    }
 		line_list.clear();
 		quad_list.clear();
 		point_list.clear();
@@ -1747,10 +1910,11 @@ if (0 && vclist.size() >= 12)
     	float y1 = prim.bounds.y1 + vofs;
     	float z0 = 0.0f;
     	float z1 = 0.0f;
-		uint8_t r = prim.color.r * 255;
-		uint8_t g = prim.color.g * 255;
-		uint8_t b = prim.color.b * 255;
-		uint8_t a = prim.color.a * 255;
+		uint16_t r = prim.color.r * 255;
+		uint16_t g = prim.color.g * 255;
+		uint16_t b = prim.color.b * 255;
+//		uint16_t a = prim.color.a * 255;
+    	uint16_t c16 = ((r << 8) & 0xf800) | ((g << 3) & 0x07e0) | (b >> 3);
 #if 0
 		GLint blend_mode = PRIMFLAG_GET_BLENDMODE(prim.flags);
 		float line_width = prim.width;
@@ -1763,25 +1927,25 @@ if (0 && vclist.size() >= 12)
 
 		if (draw_prim == GL_LINES)
 		{
+//printf("line,%d, %f,%f,%f,%f,%d,%f\n", line_list.size()/4, x0, y0, x1, y1, blend_mode, line_width);
 			uint32_t index = line_list.size();
 			line_list.resize(index + 2*4);
 			float*   fdst = (float*)(&line_list[0] + index);
-			uint8_t* cdst = (uint8_t*)(fdst + 3);
+			uint32_t* cdst = (uint32_t*)(fdst + 3);
 
 			fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
 			fdst[4+0] = x1; fdst[4+1] = y1; fdst[4+2] = z1;
-			cdst[0+0]  = r; cdst[0+1]  = g; cdst[0+2]  = b; cdst[0+3]  = a;
-			cdst[16+0] = r; cdst[16+1] = g; cdst[16+2] = b; cdst[16+3] = a;
+			cdst[0] = cdst[4] = c16;
 		}
 		else if (draw_prim == GL_POINTS)
 		{
 			uint32_t index = point_list.size();
 			point_list.resize(index + 1*4);
 			float*   fdst = (float*)(&point_list[0] + index);
-			uint8_t* cdst = (uint8_t*)(fdst + 3);
+			uint32_t* cdst = (uint32_t*)(fdst + 3);
 
 			fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
-			cdst[0+0] = r; cdst[0+1] = g; cdst[0+2] = b; cdst[0+3] = a;
+			cdst[0] = c16;
 		}
 		else if (draw_prim == GL_QUADS)
 		{
@@ -1794,10 +1958,7 @@ if (0 && vclist.size() >= 12)
 			fdst[4+0]  = x1; fdst[4+1]  = y0; fdst[4+2]  = z1;
 			fdst[8+0]  = x0; fdst[8+1]  = y1; fdst[8+2]  = z0;
 			fdst[12+0] = x1; fdst[12+1] = y1; fdst[12+2] = z1;
-			cdst[0+0]  = r; cdst[0+1]  = g; cdst[0+2]  = b; cdst[0+3]  = a;
-			cdst[16+0] = r; cdst[16+1] = g; cdst[16+2] = b; cdst[16+3] = a;
-			cdst[32+0] = r; cdst[32+1] = g; cdst[32+2] = b; cdst[32+3] = a;
-			cdst[48+0] = r; cdst[48+1] = g; cdst[48+2] = b; cdst[48+3] = a;
+			cdst[0] = cdst[4] = cdst[8] = cdst[12] = c16;
 		}
     }
 
