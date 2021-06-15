@@ -1147,8 +1147,8 @@ public:
 	void setup_quilt()
 	{
         init_gl_extensions();
-//		quilt = new Quilt(512, 680, 9, 5);
-		quilt = new Quilt(512, 680, 2, 1);
+		quilt = new Quilt(512, 680, 9, 5);
+//		quilt = new Quilt(512, 680, 2, 1);
         compile_quilt_shaders();
 
 		// Make the texture
@@ -1367,7 +1367,8 @@ public:
 		// Render to our framebuffer
 //        glActiveTexture(GL_TEXTURE0);
 //        glBindTexture(GL_TEXTURE_2D, quilt->tex16_id);
-		line_list.clear();
+		line_list32.clear();
+		line_list16.clear();
 		quad_list.clear();
 		point_list.clear();
 
@@ -1606,14 +1607,14 @@ public:
 		}
     }
 
-	inline void bresenham_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
+	inline void bresenham_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color, uint64_t screen_tile_offset=0)
 	{
 		int32_t xmax = quilt->tile_size_x;
 		int32_t ymax = quilt->tile_size_y;
     	uint32_t full_size_x = quilt->full_size_x;
     	uint32_t full_size_y = quilt->full_size_y;
 
-    	uint16_t* screen_pixels = (uint16_t*)&quilt->tex16_pixels[0];
+    	uint16_t* screen_pixels = (uint16_t*)&quilt->tex16_pixels[0] + screen_tile_offset;
 
 		if (x0 == x1)
 		{
@@ -1669,7 +1670,7 @@ public:
 			y1 = yt;
 		}
 
-    	const uint16_t* screen_pixels_end = screen_pixels + full_size_x * full_size_y;
+    	const uint16_t* screen_pixels_end = (uint16_t*)&quilt->tex16_pixels[0] + full_size_x * full_size_y;
 		uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
 		// TODO: Clipping if needed
 		if (p0 < screen_pixels || p0 >= screen_pixels_end)
@@ -1789,6 +1790,7 @@ public:
     	}
 
     	// When more line speed is needed:
+    	// 0. only clear what was drawn
     	// 1. store each vert in u64 as s16,s16,s16,color
     	// 2. store as x1,dx,y1,dy
     	// 2. separate clip vs no-clip
@@ -1796,40 +1798,35 @@ public:
     	// 4. index colors
     	// 5. multithread, and multithread clear as well
 
-    	uint32_t num_lines = line_list.size() / 8;
-    	// uint16_t* screen_pixels = (uint16_t*)&quilt->tex16_pixels[0];
-    	// uint32_t full_size_x = quilt->full_size_x;
-    	// uint32_t full_size_y = quilt->full_size_y;
-    	// const uint16_t* screen_pixels_end = screen_pixels + full_size_x + full_size_y;
-    	const float* flist = (const float*)&line_list[0];
-    	const uint32_t* clist = (const uint32_t*)&line_list[0];
-    	static int32_t xmin = 100000, ymin = 100000;
-    	static int32_t xmax = -100000, ymax = -100000;
+        // After [1] in this list, with full clear:
+        //   timers: draw: 10.266290ms (97.406174hz) frame: 61.571148ms (16.241373hz) (0 lines each, 0 lines total)
+    	// ...and without the memset screen clear:
+    	//   timers: draw: 10.704281ms (93.420570hz) frame: 53.044113ms (18.852234hz) (0 lines each, 0 lines total)
+
+    	uint32_t num_lines = line_list16.size() / 8;
     	const int xadjust = 256; // that's (1024-512)/2
     	const int yadjust = 44; // that's (768-680)/2
-    	for (uint32_t line_index = 0; line_index < num_lines; ++line_index)
-    	{
-    		uint16_t color = clist[3];
-    		int32_t x0 = flist[0] - xadjust;
-    		int32_t y0 = flist[1] - yadjust;
-    		int32_t x1 = flist[4] - xadjust;
-    		int32_t y1 = flist[5] - yadjust;
-    		bresenham_line(x0, y0, x1, y1, color);
-    		// uint16_t* p0 = screen_pixels + x0 + y0 * full_size_x;
-    		// uint16_t* p1 = screen_pixels + x1 + y1 * full_size_x;
-    		// if (p0 >= screen_pixels && p0 < screen_pixels_end)
-    		// 	*p0 = color;
-    		// if (p1 >= screen_pixels && p1 < screen_pixels_end)
-    		// 	*p1 = color;
-    		flist += 8;
-    		clist += 8;
 
-    		if (xmin > x0) xmin = x0;
-    		if (xmax < x0) xmax = x0;
-    		if (ymin > y0) ymin = y0;
-    		if (ymax < y0) ymax = y0;
-    	}
-    	printf("x -> %d:%d   y -> %d:%d\n", xmin, xmax, ymin, ymax);
+        uint32_t tcols = quilt->num_tiles_x;
+        uint32_t trows = quilt->num_tiles_y;
+        for (uint32_t trow = 0; trow < trows; ++trow)
+        {
+	        for (uint32_t tcol = 0; tcol < tcols; ++tcol)
+	        {
+		    	const int16_t* flist = (const int16_t*)&line_list16[0];
+	        	uint64_t sp_offset = tcol * quilt->tile_size_x + trow * quilt->tile_size_y * quilt->full_size_x;
+		    	for (uint32_t line_index = 0; line_index < num_lines; ++line_index)
+		    	{
+		    		uint16_t color = flist[3];
+		    		int32_t x0 = flist[0] - xadjust;
+		    		int32_t y0 = flist[1] - yadjust;
+		    		int32_t x1 = flist[4] - xadjust;
+		    		int32_t y1 = flist[5] - yadjust;
+		    		bresenham_line(x0, y0, x1, y1, color, sp_offset);
+		    		flist += 8;
+		    	}
+	        }
+        }
     }
 
     void render_pending_shapes(float screen_w, float screen_h)
@@ -1849,7 +1846,7 @@ public:
 			glEnableVertexAttribArray(1);
 	        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (const void*)(0));
 	        glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_FALSE, 4 * sizeof(float), (const void*)(3 * sizeof(float)));
-	        glBufferData(GL_ARRAY_BUFFER, line_list.size() * sizeof(float), &line_list[0], GL_STATIC_DRAW);
+	        glBufferData(GL_ARRAY_BUFFER, line_list32.size() * sizeof(float), &line_list32[0], GL_STATIC_DRAW);
 	    }
         uint32_t tcols = quilt->num_tiles_x;
         uint32_t trows = quilt->num_tiles_y;
@@ -1874,7 +1871,7 @@ public:
 		        {
 			        glUniform4f(test_scale1_loc, tcol, trow, 0.0, 0.0);
 			        glUniform4f(test_scale2_loc, tscalex, tscaley, toffx, toffy);
-			        glDrawArrays(GL_LINES, 0, line_list.size()/4);
+			        glDrawArrays(GL_LINES, 0, line_list32.size()/4);
 		        }
 	        }
 	        glFinish();
@@ -1884,32 +1881,33 @@ public:
         float tdraw_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic).count();
         float tframe_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - last_time).count();
         printf("timers: draw: %fms (%fhz) frame: %fms (%fhz) (%d lines each, %d lines total)\n",
-        	tdraw_ms, 1000.0f / tdraw_ms, tframe_ms, 1000.0f / tframe_ms, line_list.size()/4, trows * tcols * line_list.size()/4);
+        	tdraw_ms, 1000.0f / tdraw_ms, tframe_ms, 1000.0f / tframe_ms, line_list32.size()/4, trows * tcols * line_list32.size()/4);
         last_time = toc;
 
 
         if (!do_lightfield_cpu)
         {
 	        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 0.0, 0.0, 0.5, 0.0);
-	        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+	        // glDrawArrays(GL_LINES, 0, line_list32.size()/4);
 	        // glUniform4f(glGetUniformLocation(quilt->line_shader, "test_scale"), 1.0, 0.0, 1.0, 0.0);
-	        // glDrawArrays(GL_LINES, 0, line_list.size()/4);
+	        // glDrawArrays(GL_LINES, 0, line_list32.size()/4);
 
 	        glUseProgram(old_program);
 	    }
-		line_list.clear();
+		line_list32.clear();
+		line_list16.clear();
 		quad_list.clear();
 		point_list.clear();
     }
 
     void push_prim(render_primitive &prim, float hofs, float vofs, ogl_texture_info *texture)
     {
-    	float x0 = prim.bounds.x0 + hofs;
-    	float y0 = prim.bounds.y0 + vofs;
-    	float x1 = prim.bounds.x1 + hofs;
-    	float y1 = prim.bounds.y1 + vofs;
-    	float z0 = 0.0f;
-    	float z1 = 0.0f;
+    	int16_t x0 = prim.bounds.x0 + hofs;
+    	int16_t y0 = prim.bounds.y0 + vofs;
+    	int16_t x1 = prim.bounds.x1 + hofs;
+    	int16_t y1 = prim.bounds.y1 + vofs;
+    	int16_t z0 = 0;
+    	int16_t z1 = 0;
 		uint16_t r = prim.color.r * 255;
 		uint16_t g = prim.color.g * 255;
 		uint16_t b = prim.color.b * 255;
@@ -1927,15 +1925,27 @@ public:
 
 		if (draw_prim == GL_LINES)
 		{
-//printf("line,%d, %f,%f,%f,%f,%d,%f\n", line_list.size()/4, x0, y0, x1, y1, blend_mode, line_width);
-			uint32_t index = line_list.size();
-			line_list.resize(index + 2*4);
-			float*   fdst = (float*)(&line_list[0] + index);
-			uint32_t* cdst = (uint32_t*)(fdst + 3);
+//printf("line,%d, %f,%f,%f,%f,%d,%f\n", line_list32.size()/4, x0, y0, x1, y1, blend_mode, line_width);
+			if (do_lightfield_cpu)
+			{
+				uint32_t index = line_list16.size();
+				line_list16.resize(index + 2*4);
+				int16_t*   fdst = (int16_t*)(&line_list16[0] + index);
+				fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
+				fdst[4+0] = x1; fdst[4+1] = y1; fdst[4+2] = z1;
+				fdst[3] = fdst[7] = c16;
+			}
+			else
+			{
+				uint32_t index = line_list32.size();
+				line_list32.resize(index + 2*4);
+				float*   fdst = (float*)(&line_list32[0] + index);
+				uint32_t* cdst = (uint32_t*)(fdst + 3);
 
-			fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
-			fdst[4+0] = x1; fdst[4+1] = y1; fdst[4+2] = z1;
-			cdst[0] = cdst[4] = c16;
+				fdst[0+0] = x0; fdst[0+1] = y0; fdst[0+2] = z0;
+				fdst[4+0] = x1; fdst[4+1] = y1; fdst[4+2] = z1;
+				cdst[0] = cdst[4] = c16;
+			}
 		}
 		else if (draw_prim == GL_POINTS)
 		{
@@ -1967,9 +1977,10 @@ public:
     float view_angle_min;
     float view_angle_max;
     float view_angle;
-	std::vector<float> line_list;
-	std::vector<float> quad_list;
-	std::vector<float> point_list;
+	std::vector<float>   line_list32;
+	std::vector<int16_t> line_list16;
+	std::vector<float>   quad_list;
+	std::vector<float>   point_list;
 	std::chrono::time_point<std::chrono::steady_clock> last_time;
     PFNGLUSEPROGRAMPROC        glUseProgram       ;
     PFNGLCREATESHADERPROC      glCreateShader     ;
