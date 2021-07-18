@@ -1027,7 +1027,7 @@ void renderer_ogl::loadGLExtensions()
 //////////////////////////////////////////////////////////////////////
 // ej lightfield experiments
 #include <chrono>
-bool do_lightfield = true;
+bool do_lightfield = false;
 bool do_lightfield_cpu = true;	// Use the CPU to render
 enum {
     SHADOWBOX_MODE_OFF,

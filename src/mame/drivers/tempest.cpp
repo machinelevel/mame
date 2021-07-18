@@ -386,19 +386,123 @@ void tempest_state::wdclr_w(uint8_t data)
 #include <unistd.h>
 #include <errno.h>
 #include <stdint.h>
+#include <termios.h>
+#include <string.h>
+
+static bool ej_monogram_knob_active = false;
+static int  ej_monogram_knob_pos = 0;
+static int  ej_monogram_knob_buttons = 0;
+static int  real_count = -1;
+
+static void ej_read_monogram_controls()
+{
+    int speed_mult = 6;
+    static int knob_fd = -1;
+    int buttons = 0;
+    if (knob_fd < 0)
+    {
+        const char* knob_dev_name = "/dev/serial/by-id/usb-Monogram_Monogram_Core_Module_3F2D4B406A-if00";
+        knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
+        if (knob_fd >= 0)
+        {
+            struct termios tty;
+            printf("--> Successfully opened the Monogram console.\n");
+            if(tcgetattr(knob_fd, &tty) != 0)
+                printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
+            else
+            {
+                tty.c_cflag &= ~CRTSCTS; // disable flow control
+                tty.c_cflag |= CREAD | CLOCAL;
+                tty.c_lflag &= ~ICANON;
+                tty.c_lflag &= ~ISIG;
+                tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+                tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL);
+                tty.c_oflag &= ~OPOST;
+                tty.c_oflag &= ~ONLCR;
+                tty.c_cc[VTIME] = 10; // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
+                tty.c_cc[VMIN] = 0;
+                if (tcsetattr(knob_fd, TCSANOW, &tty) != 0)
+                    printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
+            }
+        }
+        else
+            printf("--> failed to open the Monogram console.\n");
+    }
+    if (knob_fd >= 0)
+    {
+        char buffer[1024];
+        int result = read(knob_fd, buffer, sizeof(buffer) - 1);
+        if (result > 0)
+        {
+            // printf("Got %d bytes! ", result);
+            // for (int i = 0; i < result; ++i)
+            //     printf("%02x ", buffer[i]);
+            // printf("\n");
+            if (buffer[0] == 0x7e && buffer[result-1] == 0x7e)
+            {
+                //                                         MOD          DN
+                // Got 25 bytes! 7e 81 a2 69 6e 94 82 a1 69 00 a1 76 98 01 00 00 00 00 00 00 00 c0 c0 c0 7e
+
+                int module_index = buffer[9];
+                if (module_index == 0)
+                {
+                    int buttons_down = buffer[13];
+                    buttons |= buttons_down;
+                    // int btn_a = (buttons_down & 1) != 0;
+                    // int btn_b = (buttons_down & 2) != 0;
+//                    printf("mod %d buttons A:%d B:%d\n", module_index, btn_a, btn_b);
+                }
+                else if (module_index == 2)
+                {
+                    int buttons_down = buffer[13];
+                    buttons |= buttons_down << 2;
+                    // int btn_a = (buttons_down & 1) != 0;
+                    // int btn_b = (buttons_down & 2) != 0;
+                    // int btn_c = (buttons_down & 4) != 0;
+//                    printf("mod %d buttons A:%d B:%d C:%d\n", module_index, btn_a, btn_b, btn_c);
+                }
+                else if (module_index == 1)
+                {
+                    int buttons_down = buffer[13];
+                    if (buttons_down == 01)
+                        real_count += speed_mult;
+                    else if (buttons_down == 0xcc)
+                        real_count -= speed_mult;
+//                    printf("mod %d dial:%d\n", module_index, real_count);
+                }
+            }
+            //            printf("real_count: %d\n", real_count);
+        }
+        else
+        {
+//            extern const int errno;
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                printf("--> Lost contact.");
+                close(knob_fd);
+                knob_fd = -1;
+            }
+        }
+    }
+    ej_monogram_knob_active = (knob_fd >= 0);
+    ej_monogram_knob_pos = 240 + (((uint32_t)real_count) & 0x0f);
+    ej_monogram_knob_buttons = buttons;
+}
+
 static int ej_read_knob()
 {
+    ej_read_monogram_controls();
+
     int speed_mult = 2;
     static int knob_fd = -1;
-    static int real_count = -1;
     if (knob_fd < 0)
     {
         const char* knob_dev_name = "/dev/input/by-id/usb-Griffin_Technology__Inc._Griffin_PowerMate-event-if00";
         knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
         if (knob_fd >= 0)
-            printf("--> Successfully opened the dev.\n");
+            printf("--> Successfully opened the Griffin PowerMate knob.\n");
         else
-            printf("--> failed to open the dev.\n");
+            printf("--> failed to open the Griffin PowerMate knob.\n");
     }
     if (knob_fd >= 0)
     {
