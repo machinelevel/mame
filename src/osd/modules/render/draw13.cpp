@@ -28,6 +28,21 @@
 //  DEBUGGING
 //============================================================
 
+static void ej_time_check()
+{
+    static std::chrono::time_point<std::chrono::steady_clock> tic = std::chrono::steady_clock::now();
+    static int frames = 0;
+    frames++;
+    std::chrono::time_point<std::chrono::steady_clock> toc = std::chrono::steady_clock::now();
+    float tframe_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic).count();
+    if (tframe_ms > 1000.0f)
+    {
+	    printf("-- draw13 frame: %fms (%fhz)\n", tframe_ms / frames, frames * 1000.0f / tframe_ms);
+	    tic = std::chrono::steady_clock::now();
+	    frames = 0;
+    }
+}
+
 //============================================================
 //  CONSTANTS
 //============================================================
@@ -503,7 +518,8 @@ void renderer_sdl2::destroy_all_textures()
 
 int renderer_sdl2::draw(int update)
 {
-printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
+ej_time_check();
+//printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
 	texture_info *texture=nullptr;
 	float vofs, hofs;
 	int blit_pixels = 0;

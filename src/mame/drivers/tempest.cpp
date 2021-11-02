@@ -398,8 +398,9 @@ static void ej_read_monogram_controls()
 {
     int speed_mult = 6;
     static int knob_fd = -1;
+    static bool keep_trying = true;
     int buttons = 0;
-    if (knob_fd < 0)
+    if (knob_fd < 0 && keep_trying)
     {
         const char* knob_dev_name = "/dev/serial/by-id/usb-Monogram_Monogram_Core_Module_3F2D4B406A-if00";
         knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
@@ -426,7 +427,10 @@ static void ej_read_monogram_controls()
             }
         }
         else
+        {
             printf("--> failed to open the Monogram console.\n");
+            keep_trying = false;
+        }
     }
     if (knob_fd >= 0)
     {
@@ -493,16 +497,34 @@ static int ej_read_knob()
 {
     ej_read_monogram_controls();
 
+    static int sleeper = 0;
+    static bool failed_to_open = false;
+
     int speed_mult = 2;
     static int knob_fd = -1;
     if (knob_fd < 0)
     {
-        const char* knob_dev_name = "/dev/input/by-id/usb-Griffin_Technology__Inc._Griffin_PowerMate-event-if00";
-        knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
-        if (knob_fd >= 0)
-            printf("--> Successfully opened the Griffin PowerMate knob.\n");
+        if (sleeper > 0)
+        {
+            sleeper--;
+        }
         else
-            printf("--> failed to open the Griffin PowerMate knob.\n");
+        {
+            const char* knob_dev_name = "/dev/input/by-id/usb-Griffin_Technology__Inc._Griffin_PowerMate-event-if00";
+            knob_fd = open(knob_dev_name, O_RDONLY|O_NONBLOCK);
+            if (knob_fd >= 0)
+            {
+                printf("--> Successfully opened the Griffin PowerMate knob.\n");
+                failed_to_open = false;
+            }
+            else
+            {
+                if (!failed_to_open)
+                    printf("--> failed to open the Griffin PowerMate knob.\n");
+                failed_to_open = true;
+                sleeper = 100;
+            }
+        }
     }
     if (knob_fd >= 0)
     {

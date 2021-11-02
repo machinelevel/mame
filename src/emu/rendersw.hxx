@@ -15,6 +15,9 @@
 #include "render.h"
 
 
+// standard SDL headers
+#include <SDL2/SDL.h> // ej added this for debugging
+
 template<typename _PixelType, int _SrcShiftR, int _SrcShiftG, int _SrcShiftB, int _DstShiftR, int _DstShiftG, int _DstShiftB, bool _NoDestRead = false, bool _BilinearFilter = false>
 class software_renderer
 {
@@ -891,6 +894,41 @@ private:
 		}
 	}
 
+	static void ej_save_prim(const render_primitive &prim, const char* filename)
+	{
+		printf(" at %d *** Saving %s...\n", __LINE__, filename);
+	    SDL_Surface* out_image;
+	    int w = prim.texture.width;
+	    int h = prim.texture.height;
+        out_image = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32,
+                                    0xff000000,
+                                    0x00ff0000,
+                                    0x0000ff00,
+                                    0x000000ff);
+        SDL_LockSurface(out_image);
+        u32 *dest = (u32*)out_image->pixels;
+        for (int y = 0; y < h; ++y)
+        {
+        	for (int x = 0; x < w; ++x)
+        	{
+				const u16 *texbase = reinterpret_cast<const u16 *>(prim.texture.base) + y * prim.texture.rowpixels + x;
+				u32 yuy16 = ((u32)texbase[x & 1] >> 8) | (((u32)texbase[0] & 0xff) << 8) | (((u32)texbase[1] & 0xff) << 16);
+				const u32 pix = ycc_to_rgb(yuy16);
+//				const u32 pix = ycc_to_rgb(get_texel_yuy16(prim.texture, x, y));
+				// u32 r = source32_r(pix);
+				// u32 g = source32_g(pix);
+				// u32 b = source32_b(pix);
+				// r = (r | -(r >> (8 - _SrcShiftR))) & (0xff >> _SrcShiftR);
+				// g = (g | -(g >> (8 - _SrcShiftG))) & (0xff >> _SrcShiftG);
+				// b = (b | -(b >> (8 - _SrcShiftB))) & (0xff >> _SrcShiftB);
+				// *dest++ = (r << 24) | (g << 16) | (b << 8) | 0x000000ff;
+				*dest++ = pix;
+//				*dest++ = dest_assemble_rgb(r, g, b);
+        	}
+        }
+        SDL_UnlockSurface(out_image);
+        SDL_SaveBMP(out_image, filename);
+	}
 
 	//-------------------------------------------------
 	//  draw_quad_yuy16_add - perform
@@ -984,7 +1022,11 @@ private:
 
 	static void draw_quad_rgb32(const render_primitive &prim, _PixelType *dstdata, u32 pitch, const quad_setup_data&setup)
 	{
+static int ej_serial = 0;
 		const rgb_t *palbase = prim.texture.palette;
+if (prim.texture.width == 256 && prim.texture.height == 240) printf("    at %d s/n %d    ej draw tes pal %p, quad %d,%d\n", __LINE__, ej_serial++, palbase, (int)prim.texture.width, (int)prim.texture.height);
+if (ej_serial == 1600)
+	ej_save_prim(prim, "screen_prim_1.bmp");
 
 		// fast case: no coloring, no alpha
 		if (prim.color.r >= 1.0f && prim.color.g >= 1.0f && prim.color.b >= 1.0f && is_opaque(prim.color.a))
@@ -1714,6 +1756,9 @@ private:
 		setup.starty = round_nearest(prim.bounds.y0);
 		setup.endx = round_nearest(prim.bounds.x1);
 		setup.endy = round_nearest(prim.bounds.y1);
+//printf("     ej draw tes quad %p %d,%d,%d,%d\n", &prim, (int)prim.bounds.x0, (int)prim.bounds.x1, (int)prim.bounds.y0, (int)prim.bounds.y1);
+// 224,800,0,768
+//printf("     ej draw tes quad %p %d,%d\n", &prim, (int)prim.texture.width, (int)prim.texture.height);
 
 		// ensure we fit
 		if (setup.startx < 0) setup.startx = 0;
@@ -1743,48 +1788,57 @@ private:
 			setup.startu -= 0x8000;
 			setup.startv -= 0x8000;
 		}
-
+//static int ej_serial = 0;
 		// render based on the texture coordinates
 		switch (prim.flags & (PRIMFLAG_TEXFORMAT_MASK | PRIMFLAG_BLENDMODE_MASK))
 		{
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_PALETTE16) | PRIMFLAG_BLENDMODE(BLENDMODE_NONE):
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_PALETTE16) | PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_palette16_none(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_PALETTE16) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_palette16_add(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_YUY16) | PRIMFLAG_BLENDMODE(BLENDMODE_NONE):
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_YUY16) | PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_yuy16_none(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_YUY16) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_yuy16_add(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_RGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_NONE):
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_RGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA):
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_ARGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_NONE):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_rgb32(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_RGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_RGB_MULTIPLY):
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_ARGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_RGB_MULTIPLY):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_rgb32_multiply(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_RGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_rgb32_add(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_ARGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_ALPHA):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_argb32_alpha(prim, dstdata, pitch, setup);
 				break;
 
 			case PRIMFLAG_TEXFORMAT(TEXFORMAT_ARGB32) | PRIMFLAG_BLENDMODE(BLENDMODE_ADD):
+//if (prim.texture.width == 256 && prim.texture,height = 240) printf(" at %d s/n %d    ej draw tes quad %d,%d\n", __LINE__, ej_serial++, (int)prim.texture.width, (int)prim.texture.height);
 				draw_quad_argb32_add(prim, dstdata, pitch, setup);
 				break;
 
@@ -1819,7 +1873,10 @@ public:
 					if (!prim->texture.base)
 						draw_rect(*prim, reinterpret_cast<_PixelType *>(dstdata), width, height, pitch);
 					else
+					{
+//		printf("     ej draw tes quad %p %dx%d\n", prim, (int)width, (int)height);
 						setup_and_draw_textured_quad(*prim, reinterpret_cast<_PixelType *>(dstdata), width, height, pitch);
+					}
 					break;
 
 				default:

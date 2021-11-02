@@ -33,6 +33,21 @@
 //  DEBUGGING
 //============================================================
 
+static void ej_time_check()
+{
+    static std::chrono::time_point<std::chrono::steady_clock> tic = std::chrono::steady_clock::now();
+    static int frames = 0;
+    frames++;
+    std::chrono::time_point<std::chrono::steady_clock> toc = std::chrono::steady_clock::now();
+    float tframe_ms = 0.000001 * std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic).count();
+    if (tframe_ms > 1000.0f)
+    {
+	    printf("-- drawsdl frame: %fms (%fhz)\n", tframe_ms / frames, frames * 1000.0f / tframe_ms);
+	    tic = std::chrono::steady_clock::now();
+	    frames = 0;
+    }
+}
+
 //============================================================
 //  CONSTANTS
 //============================================================
@@ -288,7 +303,8 @@ void renderer_sdl1::destroy_all_textures()
 
 int renderer_sdl1::draw(int update)
 {
-printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
+ej_time_check();
+//printf(">>ejejej error (need ./arcade -video opengl tempest) at %s:%d\n", __FILE__, __LINE__);
 	const sdl_scale_mode *sm = &scale_modes[video_config.scale_mode];
 	uint8_t *surfptr;
 	int32_t pitch;
