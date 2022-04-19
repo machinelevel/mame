@@ -1225,7 +1225,10 @@ ej_time_check();
 		if (shadowbox->do_superdirect)
 		{
 			for (render_primitive &prim : *win->m_primlist)
+			{
+				texture = texture_update(&prim, 0);
 				shadowbox->superdirect_push_prim(prim, hofs, vofs, texture);
+			}
 			shadowbox->superdirect_render_pending_shapes(m_width, m_height);
 		}
 		else

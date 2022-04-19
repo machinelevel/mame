@@ -1581,9 +1581,12 @@ void williams_state::williams_base(machine_config &config)
 	m_pia[2]->irqb_handler().set("soundirq", FUNC(input_merger_any_high_device::in_w<1>));
 }
 
+#include "../../../../../sp435-project-shadowbox/mame/shadowbox.h"
 
 void defender_state::defender(machine_config &config)
 {
+  shadowbox_set_game(SHADOWBOX_GAME_DEFENDER);
+
 	williams_base(config);
 
 	// basic machine hardware

@@ -356,9 +356,12 @@ protected:
 	uint8_t m_player_select;
 };
 
+#include "../../../../../sp435-project-shadowbox/mame/shadowbox.h"
 
 void tempest_state::machine_start()
 {
+    shadowbox_set_game(SHADOWBOX_GAME_TEMPEST);
+
 	m_leds.resolve();
 	save_item(NAME(m_player_select));
 }

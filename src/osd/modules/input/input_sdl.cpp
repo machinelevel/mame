@@ -368,6 +368,8 @@ protected:
 //  sdl_keyboard_device
 //============================================================
 
+#include "../../../../../../sp435-project-shadowbox/mame/shadowbox.h"
+
 class sdl_keyboard_device : public sdl_device
 {
 public:
@@ -395,6 +397,9 @@ public:
 
 	void process_event(SDL_Event &sdlevent) override
 	{
+		if (shadowbox_event_overrides((const void*)&sdlevent))
+			return;
+
 		switch (sdlevent.type)
 		{
 		case SDL_KEYDOWN:
